@@ -1,0 +1,101 @@
+{
+  "version": "0.1.20250526",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.1503 sec.",
+  "cost": 0.0018,
+  "tasks_count": 3,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "10141502-0001-0139-0000-4a5b6c7d8e9f",
+      "status_code": 20100,
+      "status_message": "Task Created.",
+      "time": "0.0021 sec.",
+      "cost": 0.0006,
+      "result_count": 0,
+      "path": [
+        "v3",
+        "serp",
+        "google",
+        "maps",
+        "task_post"
+      ],
+      "data": {
+        "api": "serp",
+        "function": "task_post",
+        "se": "google",
+        "se_type": "maps",
+        "keyword": "coffee shop",
+        "location_coordinate": "35.7796,-78.6382,15z",
+        "language_code": "en",
+        "device": "mobile",
+        "os": "android",
+        "depth": 20,
+        "priority": 1,
+        "tag": "0"
+      },
+      "result": null
+    },
+    {
+      "id": "10141502-0001-0139-0001-4a5b6c7d8e9f",
+      "status_code": 20100,
+      "status_message": "Task Created.",
+      "time": "0.0021 sec.",
+      "cost": 0.0006,
+      "result_count": 0,
+      "path": [
+        "v3",
+        "serp",
+        "google",
+        "maps",
+        "task_post"
+      ],
+      "data": {
+        "api": "serp",
+        "function": "task_post",
+        "se": "google",
+        "se_type": "maps",
+        "keyword": "coffee shop",
+        "location_coordinate": "35.7796,-78.6382,15z",
+        "language_code": "en",
+        "device": "mobile",
+        "os": "android",
+        "depth": 20,
+        "priority": 1,
+        "tag": "1"
+      },
+      "result": null
+    },
+    {
+      "id": "10141502-0001-0139-0002-4a5b6c7d8e9f",
+      "status_code": 20100,
+      "status_message": "Task Created.",
+      "time": "0.0021 sec.",
+      "cost": 0.0006,
+      "result_count": 0,
+      "path": [
+        "v3",
+        "serp",
+        "google",
+        "maps",
+        "task_post"
+      ],
+      "data": {
+        "api": "serp",
+        "function": "task_post",
+        "se": "google",
+        "se_type": "maps",
+        "keyword": "coffee shop",
+        "location_coordinate": "35.7796,-78.6382,15z",
+        "language_code": "en",
+        "device": "mobile",
+        "os": "android",
+        "depth": 20,
+        "priority": 1,
+        "tag": "2"
+      },
+      "result": null
+    }
+  ]
+}

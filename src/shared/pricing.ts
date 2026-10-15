@@ -1,0 +1,49 @@
+// DataForSEO SERP prices per task (up to 100 results), from SCOPE.md section 3.
+// Maps and Local Finder cost the same and location does not change the price.
+// Re-check https://dataforseo.com/pricing before budgeting: these are
+// upper-bound estimates; the real cost per call is read from each response
+// and recorded (see worker/billing/ledger.ts).
+
+export const QUEUE_MODES = ["standard", "priority", "live"] as const;
+export type QueueMode = (typeof QUEUE_MODES)[number];
+
+export const SERP_PRICE_USD: Record<QueueMode, number> = {
+  standard: 0.0006,
+  priority: 0.0012,
+  live: 0.002,
+};
+
+/** DataForSEO `priority` task field: 1 = standard queue, 2 = high priority. */
+export const QUEUE_PRIORITY: Record<Exclude<QueueMode, "live">, 1 | 2> = {
+  standard: 1,
+  priority: 2,
+};
+
+export const CREDITS_PER_USD = 1000;
+/** Hosted cost-plus markup on DataForSEO cost (open-seo uses 28%). */
+export const DEFAULT_BILLING_MARKUP = 1.28;
+
+export function estimateScanCostUsd(points: number, queue: QueueMode): number {
+  return roundUsd(points * SERP_PRICE_USD[queue]);
+}
+
+export function applyMarkupUsd(rawUsd: number, markup = DEFAULT_BILLING_MARKUP): number {
+  return roundUsd(rawUsd * markup);
+}
+
+/**
+ * Credits charged for one raw provider cost: marked up, then ceiled, the
+ * single formula used for both the pre-scan hold and the final settlement so
+ * the two cannot drift apart (same rule as open-seo).
+ */
+export function creditsForProviderUsd(rawUsd: number, markup = DEFAULT_BILLING_MARKUP): number {
+  return Math.ceil(applyMarkupUsd(rawUsd, markup) * CREDITS_PER_USD);
+}
+
+export function creditsToUsd(credits: number): number {
+  return credits / CREDITS_PER_USD;
+}
+
+export function roundUsd(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
+}

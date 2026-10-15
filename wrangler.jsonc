@@ -1,0 +1,56 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openlocalseo",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2025-09-02",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "observability": { "enabled": true },
+
+  // The React SPA is served as static assets; API, MCP and public report data
+  // go through the Worker first.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*"]
+  },
+
+  // Non-secret defaults. Secrets (DATAFORSEO_API_KEY, ...) go in .dev.vars
+  // locally and `wrangler secret put` when you deploy your own copy.
+  "vars": {
+    "AUTH_MODE": "local_noauth",
+    "BILLING_MODE": "byok",
+    "DATAFORSEO_MODE": "mock",
+    "BILLING_MARKUP": "1.28"
+  },
+
+  // Placeholder ids: this file serves local dev (wrangler/miniflare keeps its
+  // state in .wrangler/). To deploy your own copy, create the resources and
+  // replace the ids - see README "Self-hosting on Cloudflare".
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "openlocalseo",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "R2", "bucket_name": "openlocalseo" }],
+
+  // Scan pipeline: "post" jobs submit grid tasks to DataForSEO, "poll" jobs
+  // collect them. Failed jobs land in the dead-letter queue.
+  "queues": {
+    "producers": [{ "binding": "SCAN_QUEUE", "queue": "openlocalseo-scans" }],
+    "consumers": [
+      {
+        "queue": "openlocalseo-scans",
+        "max_batch_size": 5,
+        "max_batch_timeout": 2,
+        "max_retries": 5,
+        "dead_letter_queue": "openlocalseo-scans-dlq"
+      }
+    ]
+  },
+
+  // Daily tick; the handler starts any monthly schedule whose next_run_at is
+  // due (see src/worker/scheduled.ts).
+  "triggers": { "crons": ["15 6 * * *"] }
+}

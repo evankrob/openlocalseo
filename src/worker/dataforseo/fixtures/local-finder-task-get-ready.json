@@ -1,0 +1,280 @@
+{
+  "version": "0.1.20250526",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.0952 sec.",
+  "cost": 0.0006,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "10141502-1234-0139-0000-4a5b6c7d8e9f",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.0412 sec.",
+      "cost": 0.0006,
+      "result_count": 1,
+      "path": [
+        "v3",
+        "serp",
+        "google",
+        "local_finder",
+        "task_get",
+        "advanced"
+      ],
+      "data": {
+        "api": "serp",
+        "function": "task_get",
+        "se": "google",
+        "se_type": "local_finder",
+        "keyword": "coffee shop",
+        "location_coordinate": "35.7796,-78.6382,15z",
+        "language_code": "en",
+        "device": "mobile",
+        "os": "android",
+        "depth": 20,
+        "tag": "0"
+      },
+      "result": [
+        {
+          "keyword": "coffee shop",
+          "type": "local_finder",
+          "se_domain": "google.com",
+          "location_code": null,
+          "language_code": "en",
+          "check_url": "https://www.google.com/maps/search/coffee+shop/@35.779600,-78.638200,15z?hl=en&gl=US",
+          "datetime": "2026-10-14 15:02:11 +00:00",
+          "spell": null,
+          "refinement_chips": null,
+          "item_types": [
+            "local_finder"
+          ],
+          "se_results_count": 5,
+          "items_count": 5,
+          "items": [
+            {
+              "type": "local_finder",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "domain": "mapleember.example",
+              "title": "Maple & Ember Coffee Roasters",
+              "url": "https://mapleember.example/",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.8,
+                "votes_count": 412,
+                "rating_max": 5
+              },
+              "rating_distribution": null,
+              "snippet": null,
+              "address": "101 Fictional Ave, Fictionville, NC 27999",
+              "address_info": {
+                "borough": null,
+                "address": "101 Fictional Ave",
+                "city": "Fictionville",
+                "zip": "27999",
+                "region": "North Carolina",
+                "country_code": "US"
+              },
+              "place_id": "ChIJdemo0000000000000001",
+              "phone": "+19195550100",
+              "main_image": null,
+              "total_photos": 41,
+              "category": "Coffee shop",
+              "additional_categories": null,
+              "category_ids": [
+                "coffee_shop"
+              ],
+              "work_hours": {
+                "timetable": null,
+                "current_status": "open"
+              },
+              "feature_id": "0x89acc5:00000001",
+              "cid": "10000000000000000001",
+              "latitude": 35.7796,
+              "longitude": -78.6382,
+              "is_claimed": true,
+              "local_justifications": null
+            },
+            {
+              "type": "local_finder",
+              "rank_group": 2,
+              "rank_absolute": 2,
+              "domain": "lanternrow.example",
+              "title": "Lantern Row Cafe",
+              "url": "https://lanternrow.example/",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.6,
+                "votes_count": 288,
+                "rating_max": 5
+              },
+              "rating_distribution": null,
+              "snippet": null,
+              "address": "220 Orchard St, Fictionville, NC 27999",
+              "address_info": {
+                "borough": null,
+                "address": "220 Orchard St",
+                "city": "Fictionville",
+                "zip": "27999",
+                "region": "North Carolina",
+                "country_code": "US"
+              },
+              "place_id": "ChIJdemo0000000000000002",
+              "phone": "+19195550100",
+              "main_image": null,
+              "total_photos": 42,
+              "category": "Cafe",
+              "additional_categories": null,
+              "category_ids": [
+                "coffee_shop"
+              ],
+              "work_hours": {
+                "timetable": null,
+                "current_status": "open"
+              },
+              "feature_id": "0x89acc5:00000002",
+              "cid": "10000000000000000002",
+              "latitude": 35.7812,
+              "longitude": -78.6401,
+              "is_claimed": true,
+              "local_justifications": null
+            },
+            {
+              "type": "local_finder",
+              "rank_group": 3,
+              "rank_absolute": 3,
+              "domain": "bluebirdbean.example",
+              "title": "Bluebird Bean Co.",
+              "url": "https://bluebirdbean.example/",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.5,
+                "votes_count": 903,
+                "rating_max": 5
+              },
+              "rating_distribution": null,
+              "snippet": null,
+              "address": "15 Mill Rd, Fictionville, NC 27999",
+              "address_info": {
+                "borough": null,
+                "address": "15 Mill Rd",
+                "city": "Fictionville",
+                "zip": "27999",
+                "region": "North Carolina",
+                "country_code": "US"
+              },
+              "place_id": "ChIJdemo0000000000000003",
+              "phone": "+19195550100",
+              "main_image": null,
+              "total_photos": 43,
+              "category": "Coffee shop",
+              "additional_categories": null,
+              "category_ids": [
+                "coffee_shop"
+              ],
+              "work_hours": {
+                "timetable": null,
+                "current_status": "open"
+              },
+              "feature_id": "0x89acc5:00000003",
+              "cid": "10000000000000000003",
+              "latitude": 35.777,
+              "longitude": -78.635,
+              "is_claimed": true,
+              "local_justifications": null
+            },
+            {
+              "type": "local_finder",
+              "rank_group": 4,
+              "rank_absolute": 4,
+              "domain": "quillkettle.example",
+              "title": "Quill & Kettle",
+              "url": "https://quillkettle.example/",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.7,
+                "votes_count": 156,
+                "rating_max": 5
+              },
+              "rating_distribution": null,
+              "snippet": null,
+              "address": "9 Harbor Ln, Fictionville, NC 27999",
+              "address_info": {
+                "borough": null,
+                "address": "9 Harbor Ln",
+                "city": "Fictionville",
+                "zip": "27999",
+                "region": "North Carolina",
+                "country_code": "US"
+              },
+              "place_id": "ChIJdemo0000000000000004",
+              "phone": "+19195550100",
+              "main_image": null,
+              "total_photos": 44,
+              "category": "Coffee shop",
+              "additional_categories": null,
+              "category_ids": [
+                "coffee_shop"
+              ],
+              "work_hours": {
+                "timetable": null,
+                "current_status": "open"
+              },
+              "feature_id": "0x89acc5:00000004",
+              "cid": "10000000000000000004",
+              "latitude": 35.783,
+              "longitude": -78.642,
+              "is_claimed": true,
+              "local_justifications": null
+            },
+            {
+              "type": "local_finder",
+              "rank_group": 5,
+              "rank_absolute": 5,
+              "domain": "copperpot.example",
+              "title": "Copper Pot Espresso Bar",
+              "url": "https://copperpot.example/",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.3,
+                "votes_count": 61,
+                "rating_max": 5
+              },
+              "rating_distribution": null,
+              "snippet": null,
+              "address": "77 Pine St, Fictionville, NC 27999",
+              "address_info": {
+                "borough": null,
+                "address": "77 Pine St",
+                "city": "Fictionville",
+                "zip": "27999",
+                "region": "North Carolina",
+                "country_code": "US"
+              },
+              "place_id": "ChIJdemo0000000000000005",
+              "phone": "+19195550100",
+              "main_image": null,
+              "total_photos": 45,
+              "category": "Espresso bar",
+              "additional_categories": null,
+              "category_ids": [
+                "coffee_shop"
+              ],
+              "work_hours": {
+                "timetable": null,
+                "current_status": "open"
+              },
+              "feature_id": "0x89acc5:00000005",
+              "cid": "10000000000000000005",
+              "latitude": 35.775,
+              "longitude": -78.63,
+              "is_claimed": true,
+              "local_justifications": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

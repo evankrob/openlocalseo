@@ -1,0 +1,41 @@
+{
+  "version": "0.1.20250526",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.0952 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "10141502-1234-0139-0000-4a5b6c7d8e9f",
+      "status_code": 40602,
+      "status_message": "Task In Queue.",
+      "time": "0.0412 sec.",
+      "cost": 0,
+      "result_count": 0,
+      "path": [
+        "v3",
+        "serp",
+        "google",
+        "maps",
+        "task_get",
+        "advanced"
+      ],
+      "data": {
+        "api": "serp",
+        "function": "task_get",
+        "se": "google",
+        "se_type": "maps",
+        "keyword": "coffee shop",
+        "location_coordinate": "35.7796,-78.6382,15z",
+        "language_code": "en",
+        "device": "mobile",
+        "os": "android",
+        "depth": 20,
+        "tag": "0"
+      },
+      "result": null
+    }
+  ]
+}

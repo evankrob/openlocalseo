@@ -60,7 +60,7 @@ async function loadTarget(db: Db, trackerId: string): Promise<BusinessRow | unde
   return row?.business;
 }
 
-function mockHints(provider: DataForSeoProvider, business: BusinessRow): MockHints | undefined {
+function mockHints(provider: DataForSeoProvider, business: BusinessRow, prominence?: number): MockHints | undefined {
   if (provider.mode !== "mock") return undefined;
   return {
     target: {
@@ -69,6 +69,7 @@ function mockHints(provider: DataForSeoProvider, business: BusinessRow): MockHin
       domain: business.domain,
       lat: business.lat,
       lng: business.lng,
+      prominence,
     },
   };
 }
@@ -93,7 +94,7 @@ async function recordApiCall(
   });
   await deps.db
     .update(scans)
-    .set({ costUsd: sql`${scans.costUsd} + ${costUsd}` })
+    .set({ costUsd: sql`round(${scans.costUsd} + ${costUsd}, 6)` })
     .where(eq(scans.id, scan.id));
 }
 

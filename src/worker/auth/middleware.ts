@@ -28,10 +28,12 @@ export async function authenticate(c: Context, options: AuthOptions): Promise<Au
   }
 
   if (config.authMode === "local_noauth") {
-    // Requests that came through Cloudflare's edge carry cf-connecting-ip;
-    // local wrangler/vite dev does not. Refuse so a deployed copy left on the
-    // default mode is not open to the internet.
-    if (c.req.header("cf-connecting-ip")) {
+    // Only ever trust loopback hosts. A deployed Worker is reached through a
+    // workers.dev or custom hostname, so one left on the default mode refuses
+    // to serve instead of being open to the internet.
+    const host = new URL(c.req.url).hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
+    if (!isLocal) {
       throw new AppError(
         "FORBIDDEN",
         "AUTH_MODE=local_noauth is for local development only. Set AUTH_MODE=cloudflare_access (or hosted) before deploying.",

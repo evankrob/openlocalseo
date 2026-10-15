@@ -99,11 +99,13 @@ describe("local_noauth: the whole flow over HTTP", () => {
     expect((await call("POST", "/api/businesses", { name: "x", lat: 200, lng: 0 })).status).toBe(400);
   });
 
-  it("refuses requests that came through the Cloudflare edge", async () => {
-    const { call } = client(h);
-    const res = await call("GET", "/api/me", undefined, { "cf-connecting-ip": "203.0.113.7" });
+  it("refuses to run on a non-local hostname, so a deployed copy is never open", async () => {
+    const app = createApp({ resolveDeps: () => h.deps });
+    const res = await app.request("https://tracker.example.com/api/me", {}, {} as Env);
+    const json = (await res.json()) as { error: { message: string } };
     expect(res.status).toBe(403);
-    expect(res.json.error.message).toMatch(/local development only/);
+    expect(json.error.message).toMatch(/local development only/);
+    expect((await app.request("http://127.0.0.1:8787/api/me", {}, {} as Env)).status).toBe(200);
   });
 });
 

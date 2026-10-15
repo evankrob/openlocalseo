@@ -31,6 +31,8 @@ export type MockHints = {
     domain: string | null;
     lat: number;
     lng: number;
+    /** 0-1 strength of the tracked business in the simulated market. */
+    prominence?: number;
   };
 };
 

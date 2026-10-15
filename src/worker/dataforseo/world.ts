@@ -111,7 +111,7 @@ export function buildWorld(keyword: string, center: DemoCenter, hints?: MockHint
       ratingCount: 412,
       category,
       address: "101 Fictional Ave, Fictionville, NC 27999",
-      prominence: 0.62,
+      prominence: target.prominence ?? 0.62,
     });
     return filtered;
   }

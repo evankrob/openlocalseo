@@ -1,0 +1,137 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Theme tokens follow open-seo's shadcn-style variables (MIT, see README). */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-border: var(--sidebar-border);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.5);
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: oklch(95.5% 0 0);
+  --foreground: oklch(20% 0 0);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(20% 0 0);
+  --primary: oklch(50% 0.12 262);
+  --primary-foreground: oklch(100% 0 0);
+  --secondary: oklch(97% 0 0);
+  --secondary-foreground: oklch(20% 0 0);
+  --muted: oklch(97% 0 0);
+  --muted-foreground: oklch(20% 0 0 / 60%);
+  --accent: oklch(97% 0 0);
+  --accent-foreground: oklch(20% 0 0);
+  --destructive: oklch(55% 0.2 25);
+  --success: oklch(55% 0.16 145);
+  --warning: oklch(80% 0.15 80);
+  --border: oklch(92% 0 0);
+  --input: oklch(82% 0 0);
+  --ring: oklch(50% 0.12 262);
+  --sidebar: oklch(91% 0 0);
+  --sidebar-border: oklch(86% 0 0);
+
+  /* Rank tiers: one blue ramp, darker = better rank (validated ordinal ramp:
+     scripts in the dataviz method; light end clears 2:1 on the surface). */
+  --rank-1: #104281; /* 1-3   */
+  --rank-2: #256abf; /* 4-7   */
+  --rank-3: #5598e7; /* 8-12  */
+  --rank-4: #86b6ef; /* 13-20 */
+  --rank-none: #d9d8d4; /* not found in the top 20 */
+  --rank-text-dark: #0b0b0b;
+  --rank-text-light: #ffffff;
+  --series-1: #2a78d6;
+  --grid-line: oklch(56% 0.01 255 / 0.28);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: oklch(18% 0 0);
+    --foreground: oklch(92% 0 0);
+    --card: oklch(23% 0 0);
+    --card-foreground: oklch(92% 0 0);
+    --primary: oklch(66% 0.12 262);
+    --secondary: oklch(28% 0 0);
+    --secondary-foreground: oklch(92% 0 0);
+    --muted: oklch(26% 0 0);
+    --muted-foreground: oklch(92% 0 0 / 60%);
+    --accent: oklch(28% 0 0);
+    --accent-foreground: oklch(92% 0 0);
+    --border: oklch(30% 0 0);
+    --input: oklch(40% 0 0);
+    --sidebar: oklch(24% 0 0);
+    --sidebar-border: oklch(31% 0 0);
+    --rank-1: #86b6ef;
+    --rank-2: #5598e7;
+    --rank-3: #2a78d6;
+    --rank-4: #184f95;
+    --rank-none: #383835;
+    --rank-text-dark: #0b0b0b;
+    --rank-text-light: #ffffff;
+    --series-1: #3987e5;
+  }
+}
+
+html,
+body,
+#root {
+  @apply m-0 h-full bg-background text-foreground;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- heatmap pins ---------------------------------------------------- */
+.rank-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  font: 600 12px/1 system-ui, sans-serif;
+  border: 2px solid var(--card);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
+.rank-pin[data-tier="1"] { background: var(--rank-1); color: var(--rank-text-light); }
+.rank-pin[data-tier="2"] { background: var(--rank-2); color: var(--rank-text-light); }
+.rank-pin[data-tier="3"] { background: var(--rank-3); color: var(--rank-text-dark); }
+.rank-pin[data-tier="4"] { background: var(--rank-4); color: var(--rank-text-dark); }
+.rank-pin[data-tier="none"] { background: var(--rank-none); color: var(--foreground); }
+.rank-pin[data-tier="failed"] { background: var(--card); color: var(--destructive); border: 2px dashed var(--destructive); }
+.rank-pin[data-selected="true"] { outline: 3px solid var(--foreground); outline-offset: 1px; }
+.rank-pin.small { width: 22px; height: 22px; font-size: 10px; }
+.legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 9999px; }
+.business-marker { width: 14px; height: 14px; background: var(--card); border: 3px solid var(--foreground); border-radius: 3px; transform: rotate(45deg); }
+
+.leaflet-container { font-family: inherit; }
+
+@media print {
+  .no-print { display: none !important; }
+  html, body, #root { height: auto; background: white; }
+  .print-break { break-inside: avoid; }
+}

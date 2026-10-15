@@ -106,7 +106,7 @@ See [`.env.example`](.env.example) for every variable.
 
 ## Self-hosting on Cloudflare
 
-This repo never deploys or creates resources on its own. To run your own copy, do these steps yourself with your own Cloudflare account (Workers Paid plan recommended: Queues need it, and the free plan's 50-subrequest limit is why jobs are chunked):
+This repo never deploys or creates resources on its own. To run your own copy, do these steps yourself with your own Cloudflare account (check current Cloudflare plan limits for Queues; jobs are chunked to stay under per-invocation subrequest limits):
 
 ```bash
 npx wrangler login

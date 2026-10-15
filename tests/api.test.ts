@@ -325,3 +325,21 @@ describe("MCP server", () => {
     expect(res.json.result.content[0].text).toContain("NOT_FOUND");
   });
 });
+
+describe("hosted top-ups", () => {
+  it("POST /api/admin/credits needs ADMIN_TOKEN, not a user session, and adds credits", async () => {
+    const h = await createHarness({ env: { AUTH_MODE: "hosted", BILLING_MODE: "hosted", HOSTED_FREE_CREDITS: "0" } });
+    const a = client(h);
+    await a.call("POST", "/api/auth/signup", { email: "a@example.com", password: "correct horse battery" });
+    const wsId = (await a.call("GET", "/api/me")).json.workspace.id;
+    const env = { ADMIN_TOKEN: "s3cret-admin-token" } as Partial<Env>;
+    const admin = client(h, env);
+    expect((await admin.call("POST", "/api/admin/credits", { workspaceId: wsId, credits: 500 })).status).toBe(401);
+    expect((await admin.call("POST", "/api/admin/credits", { workspaceId: wsId, credits: 500 }, { authorization: "Bearer wrong" })).status).toBe(401);
+    // unset token disables the endpoint entirely
+    expect((await a.call("POST", "/api/admin/credits", { workspaceId: wsId, credits: 500 }, { authorization: "Bearer undefined" })).status).toBe(401);
+    const ok = await admin.call("POST", "/api/admin/credits", { workspaceId: wsId, credits: 500 }, { authorization: "Bearer s3cret-admin-token" });
+    expect(ok.status).toBe(200);
+    expect((await a.call("GET", "/api/usage")).json.credits.balance).toBe(500);
+  });
+});

@@ -137,6 +137,17 @@ export function createApp(options: AppOptions = {}) {
     return handleMcpRequest(c.req.raw, { auth, deps, baseUrl: new URL(c.req.url).origin });
   });
 
+  // ---- hosted top-ups (registered before the authenticated router so user auth does not apply)
+  // Hosted top-ups until a payment provider is wired in (next step). Guarded by ADMIN_TOKEN.
+  app.post("/api/admin/credits", async (c) => {
+    const expected = c.env.ADMIN_TOKEN;
+    const given = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+    if (!expected || !given || !timingSafeEqual(given, expected)) throw new AppError("UNAUTHENTICATED", "Invalid admin token");
+    const input = await body(c, z.object({ workspaceId: z.string(), credits: z.number().int().positive() }));
+    await grantCredits(c.get("deps").db, input.workspaceId, input.credits, "topup");
+    return c.json({ ok: true });
+  });
+
   // ---- authenticated API -----------------------------------------------------------
   const api = new Hono<{ Bindings: Env; Variables: Variables }>();
   api.use("*", async (c, next) => {
@@ -265,16 +276,6 @@ export function createApp(options: AppOptions = {}) {
   });
 
   app.route("/api", api);
-
-  // Hosted top-ups until a payment provider is wired in (next step). Guarded by ADMIN_TOKEN.
-  app.post("/api/admin/credits", async (c) => {
-    const expected = c.env.ADMIN_TOKEN;
-    const given = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
-    if (!expected || !given || !timingSafeEqual(given, expected)) throw new AppError("UNAUTHENTICATED", "Invalid admin token");
-    const input = await body(c, z.object({ workspaceId: z.string(), credits: z.number().int().positive() }));
-    await grantCredits(c.get("deps").db, input.workspaceId, input.credits, "topup");
-    return c.json({ ok: true });
-  });
 
   // Anything under /api that did not match.
   app.all("/api/*", (c) => c.json({ error: { code: "NOT_FOUND", message: "Not found" } }, 404));

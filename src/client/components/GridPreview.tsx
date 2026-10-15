@@ -33,6 +33,7 @@ export function GridPreview({
     instance.on("click", (e: L.LeafletMouseEvent) => cb.current({ lat: e.latlng.lat, lng: e.latlng.lng }));
     instance.setView([center.lat, center.lng], 12);
     map.current = instance;
+    fittedFor.current = "";
     return () => {
       instance.remove();
       map.current = null;
@@ -45,7 +46,11 @@ export function GridPreview({
     const group = layer.current;
     if (!instance || !group) return;
     group.clearLayers();
-    centerMarker.current = L.marker([center.lat, center.lng], { draggable: true, title: "Drag to move the grid center" })
+    centerMarker.current = L.marker([center.lat, center.lng], {
+      draggable: true,
+      title: "Drag to move the grid center",
+      icon: L.divIcon({ className: "", html: '<div class="business-marker" style="width:20px;height:20px"></div>', iconSize: [20, 20], iconAnchor: [10, 10] }),
+    })
       .on("dragend", (e) => {
         const ll = (e.target as L.Marker).getLatLng();
         cb.current({ lat: ll.lat, lng: ll.lng });

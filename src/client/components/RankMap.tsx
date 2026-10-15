@@ -53,6 +53,8 @@ export function RankMap({
     L.tileLayer(OSM_TILES, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(instance);
     layer.current = L.layerGroup().addTo(instance);
     map.current = instance;
+    // A fresh map has no view yet (StrictMode remounts reuse this ref).
+    fitted.current = "";
     return () => {
       instance.remove();
       map.current = null;

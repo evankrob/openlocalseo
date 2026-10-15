@@ -53,5 +53,9 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.4",
     "wrangler": "^4.151.0"
+  },
+  "description": "Open-source local SEO map-grid rank tracker on Cloudflare (Workers, D1, Queues, Cron, R2)",
+  "engines": {
+    "node": ">=22"
   }
 }

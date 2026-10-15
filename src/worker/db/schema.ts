@@ -186,7 +186,6 @@ export const scans = sqliteTable(
     costUsd: real("cost_usd").notNull().default(0),
     reservedCredits: integer("reserved_credits").notNull().default(0),
     billedCredits: integer("billed_credits").notNull().default(0),
-    pollAttempts: integer("poll_attempts").notNull().default(0),
     error: text("error"),
     rawR2Key: text("raw_r2_key"),
     createdAt: createdAt(),
@@ -195,6 +194,11 @@ export const scans = sqliteTable(
   (t) => [
     index("scans_tracker_idx").on(t.trackerId, t.createdAt),
     index("scans_workspace_idx").on(t.workspaceId, t.createdAt),
+    // At most one active scan per tracker, enforced by the database so two
+    // concurrent "run scan" clicks cannot both be charged.
+    uniqueIndex("scans_one_active_per_tracker_idx")
+      .on(t.trackerId)
+      .where(sql`${t.status} IN ('queued','posting','polling')`),
   ],
 );
 

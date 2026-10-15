@@ -150,7 +150,6 @@ CREATE TABLE `scans` (
 	`cost_usd` real DEFAULT 0 NOT NULL,
 	`reserved_credits` integer DEFAULT 0 NOT NULL,
 	`billed_credits` integer DEFAULT 0 NOT NULL,
-	`poll_attempts` integer DEFAULT 0 NOT NULL,
 	`error` text,
 	`raw_r2_key` text,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')) NOT NULL,
@@ -161,6 +160,7 @@ CREATE TABLE `scans` (
 --> statement-breakpoint
 CREATE INDEX `scans_tracker_idx` ON `scans` (`tracker_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `scans_workspace_idx` ON `scans` (`workspace_id`,`created_at`);--> statement-breakpoint
+CREATE UNIQUE INDEX `scans_one_active_per_tracker_idx` ON `scans` (`tracker_id`) WHERE "scans"."status" IN ('queued','posting','polling');--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,

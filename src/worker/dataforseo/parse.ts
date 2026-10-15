@@ -70,5 +70,5 @@ export function taskToOutcome(task: TaskLike): TaskOutcome {
     if (isNoResultsTask(task)) return { status: "completed", items: [] };
     return { status: "failed", message: task.status_message || `DataForSEO task failed (${task.status_code})` };
   }
-  return { status: "completed", items: parseMapItems(firstResultItems(task)) };
+  return { status: "completed", items: parseMapItems(firstResultItems(task)), raw: task.result?.[0] };
 }

@@ -58,7 +58,8 @@ export type PostTasksResult = {
 export type TaskOutcome =
   | { status: "pending" }
   | { status: "failed"; message: string }
-  | { status: "completed"; items: MapResult[] };
+  // `raw` is the provider's result object, archived to R2 as-is.
+  | { status: "completed"; items: MapResult[]; raw?: unknown };
 
 export type LiveSearchInput = SearchBase & { coordinate: string };
 

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b2544724-b090-4405-a78d-536daa74b1b2",
+  "id": "60d2a3da-17f3-453e-96a7-92081cfba445",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "api_calls": {
@@ -1095,14 +1095,6 @@
           "autoincrement": false,
           "default": 0
         },
-        "poll_attempts": {
-          "name": "poll_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
         "error": {
           "name": "error",
           "type": "text",
@@ -1149,6 +1141,14 @@
             "created_at"
           ],
           "isUnique": false
+        },
+        "scans_one_active_per_tracker_idx": {
+          "name": "scans_one_active_per_tracker_idx",
+          "columns": [
+            "tracker_id"
+          ],
+          "isUnique": true,
+          "where": "\"scans\".\"status\" IN ('queued','posting','polling')"
         }
       },
       "foreignKeys": {

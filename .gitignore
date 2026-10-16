@@ -8,3 +8,11 @@ dist
 *.log
 .logs
 coverage
+
+# build outputs, env, local DBs
+build/
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3

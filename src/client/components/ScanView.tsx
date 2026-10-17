@@ -131,3 +131,21 @@ export function ScanView({
     </div>
   );
 }
+
+/** Warns when the tracked website ranked under a different Google listing than the tracked place ID. */
+export function OtherListingsNote({ listings }: { listings?: Array<{ name: string; placeId: string | null; points: number; bestRank: number }> }) {
+  if (!listings || listings.length === 0) return null;
+  return (
+    <Card className="border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950/30">
+      <p className="font-medium">Your website showed up under a different Google listing</p>
+      <ul className="mt-1 list-disc pl-5">
+        {listings.map((l) => (
+          <li key={l.placeId ?? l.name}>
+            {l.name} (place ID <code>{l.placeId ?? "unknown"}</code>) at {l.points} point{l.points === 1 ? "" : "s"}, best rank #{l.bestRank}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-muted-foreground">This scan only counts the place ID saved on the business. If that listing is the one you want, add a business with its place ID.</p>
+    </Card>
+  );
+}

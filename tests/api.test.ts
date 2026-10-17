@@ -125,11 +125,25 @@ describe("local_noauth: the whole flow over HTTP", () => {
     expect(none.json.error.message).toMatch(/place ID or an address/);
     const bad = await call("POST", "/api/businesses", { name: "Shop", placeId: "ChIJunknown" });
     expect(bad.status).toBe(400);
-    expect(bad.json.error.message).toMatch(/couldn't find that place ID/);
+    expect(bad.json.error.message).toMatch(/couldn't confirm that place ID/);
     h.deps.geocode = async () => ({ lat: 1, lng: 2, address: "y" });
     const viaAddr = await call("POST", "/api/businesses", { name: "Shop", placeId: "ChIJunknown", address: "5 Elm" });
     expect(viaAddr.status).toBe(201);
     expect(viaAddr.json.lat).toBe(1);
+  });
+
+  it("keeps the typed place ID and ignores a lookup that answers for a different listing", async () => {
+    const { call } = client(h);
+    const ok = await call("POST", "/api/businesses", { name: "Maple", placeId: "ChIJexact123" });
+    expect(ok.json.placeId).toBe("ChIJexact123");
+    h.deps.geocode = async () => null;
+    const mismatch = await call("POST", "/api/businesses", { name: "Maple", placeId: "ChIJother999" });
+    expect(mismatch.status).toBe(400);
+    expect(mismatch.json.error.message).toMatch(/couldn't confirm that place ID/);
+    h.deps.geocode = async () => ({ lat: 41, lng: -80, address: "z" });
+    const viaAddr = await call("POST", "/api/businesses", { name: "Maple", placeId: "ChIJother999", address: "1 Main St" });
+    expect(viaAddr.status).toBe(201);
+    expect([viaAddr.json.placeId, viaAddr.json.lat, viaAddr.json.address]).toEqual(["ChIJother999", 41, "1 Main St"]);
   });
 
   it("refuses to run on a non-local hostname, so a deployed copy is never open", async () => {

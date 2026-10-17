@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { get } from "../lib/api";
 import { fmtDateTime, fmtUsd } from "../lib/format";
 import type { ScanDetail } from "../lib/types";
-import { ScanView } from "../components/ScanView";
+import { ScanView, OtherListingsNote } from "../components/ScanView";
 import { Badge, ErrorNote, Spinner } from "../components/ui";
 import { statusTone } from "./Dashboard";
 import { PageHeader } from "./shell";
@@ -27,7 +27,10 @@ export function ScanPage() {
       />
       {scan.error && <ErrorNote error={new Error(scan.error)} />}
       {scan.status === "completed" || q.data.points.some((p) => p.status === "completed") ? (
-        <ScanView data={toViewData(q.data)} loadPoint={loadScanPoint(id)} queryKey={["scan", id]} />
+        <>
+          <OtherListingsNote listings={q.data.otherListings} />
+          <ScanView data={toViewData(q.data)} loadPoint={loadScanPoint(id)} queryKey={["scan", id]} />
+        </>
       ) : (
         <p className="text-sm text-muted-foreground">Results appear when the scan finishes.</p>
       )}

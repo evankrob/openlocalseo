@@ -191,6 +191,8 @@ export type ScanDetail = {
   }>;
   metrics: ScanMetrics | null;
   competitors: CompetitorSummary[];
+  /** Listings with the tracked website that are not the tracked place (e.g. a different/duplicate Google listing). */
+  otherListings: Array<{ name: string; placeId: string | null; points: number; bestRank: number }>;
 };
 
 export async function getScanDetail(
@@ -273,7 +275,29 @@ export async function getScanDetail(
     points,
     metrics,
     competitors: options.competitors && scan.status === "completed" ? await getCompetitors(db, scanId, completedPoints.map((p) => p.id)) : [],
+    otherListings: await getOtherListings(db, scanId, business.domain),
   };
+}
+
+const bareDomain = (d: string) => d.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+
+/** Results showing the tracked website under a listing that was not matched as the tracked business. */
+export async function getOtherListings(db: Db, scanId: string, domain: string | null) {
+  if (!domain) return [];
+  const want = bareDomain(domain);
+  const rows = await db
+    .select({ pointId: scanResults.pointId, key: scanResults.businessKey, name: scanResults.name, placeId: scanResults.placeId, domain: scanResults.domain, rank: scanResults.rank, isTarget: scanResults.isTarget })
+    .from(scanResults)
+    .where(eq(scanResults.scanId, scanId));
+  const byKey = new Map<string, { name: string; placeId: string | null; points: Set<string>; bestRank: number }>();
+  for (const r of rows) {
+    if (r.isTarget || !r.domain || bareDomain(r.domain) !== want) continue;
+    const e = byKey.get(r.key) ?? { name: r.name, placeId: r.placeId, points: new Set<string>(), bestRank: r.rank };
+    e.points.add(r.pointId);
+    e.bestRank = Math.min(e.bestRank, r.rank);
+    byKey.set(r.key, e);
+  }
+  return [...byKey.values()].map((e) => ({ name: e.name, placeId: e.placeId, points: e.points.size, bestRank: e.bestRank }));
 }
 
 /** Per-business ARP / ATRP / SoLV from the SERPs this scan already collected. */

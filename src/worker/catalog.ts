@@ -45,7 +45,11 @@ export async function resolveBusinessInput(
   }
   if (input.placeId && provider.lookupPlace) {
     const found = await provider.lookupPlace(input.placeId);
-    if (found) {
+    // Only trust the lookup when Google answered for the exact place ID typed;
+    // a related listing's details would silently track the wrong location.
+    if (found && found.place.placeId && found.place.placeId !== input.placeId) {
+      console.warn("business.place-lookup-mismatch", { asked: input.placeId, got: found.place.placeId });
+    } else if (found) {
       console.log("business.place-lookup", { costUsd: found.billing.costUsd });
       const p = found.place;
       return {
@@ -66,7 +70,7 @@ export async function resolveBusinessInput(
   throw new AppError(
     "VALIDATION_ERROR",
     input.placeId
-      ? "We couldn't find that place ID on Google. Check it starts with ChIJ, or add the street address instead."
+      ? "We couldn't confirm that place ID on Google. Check it (it starts with ChIJ), or add the street address instead."
       : "We couldn't find that address on the map. Try adding the city and state.",
   );
 }

@@ -1,3 +1,4 @@
+import type { Geocoder } from "../geocode";
 // Scan pipeline, run by the queue consumer. A scan moves
 //   queued -> posting -> polling -> completed | failed
 // "post" submits every grid point (or fans out live searches), "collect" /
@@ -26,6 +27,8 @@ export type ProcessDeps = ScanDeps & {
   provider: DataForSeoProvider;
   raw?: RawStore;
   now?: () => Date;
+  /** Address geocoder for new businesses; defaults to Nominatim. */
+  geocode?: Geocoder;
 };
 
 type ScanRow = typeof scans.$inferSelect;

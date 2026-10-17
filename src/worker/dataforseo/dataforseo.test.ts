@@ -186,3 +186,23 @@ describe("createDataForSeo", () => {
     expect(createDataForSeo({ DATAFORSEO_MODE: "live", DATAFORSEO_API_KEY: "abc" }).mode).toBe("live");
   });
 });
+
+describe("HttpDataForSeo.lookupPlace", () => {
+  const envelope = (items: unknown[] | null) => ({
+    status_code: 20000,
+    tasks: [{ status_code: 20000, status_message: "Ok.", cost: 0.0054, path: ["v3", "business_data", "google", "my_business_info", "live"], result: [{ items }] }],
+  });
+  it("returns coordinates and details for a place ID via my_business_info", async () => {
+    const { client, fetchImpl } = httpWith(json(envelope([{ title: "Google Sydney", address: "48 Pirrama Rd", latitude: -33.86, longitude: 151.19, cid: "1028", category: "Office", domain: "google.com" }])));
+    const found = await client.lookupPlace("ChIJN1t_tDeuEmsRUsoyG83frY4");
+    expect(found?.place).toMatchObject({ name: "Google Sydney", address: "48 Pirrama Rd", lat: -33.86, lng: 151.19, cid: "1028" });
+    expect(found?.billing.costUsd).toBeCloseTo(0.0054, 6);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("https://dfs.test/v3/business_data/google/my_business_info/live");
+    expect(JSON.parse(init!.body as string)[0]).toMatchObject({ keyword: "place_id:ChIJN1t_tDeuEmsRUsoyG83frY4" });
+  });
+  it("returns null when the place has no coordinates", async () => {
+    const { client } = httpWith(json(envelope([])));
+    expect(await client.lookupPlace("ChIJnothing")).toBeNull();
+  });
+});

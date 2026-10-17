@@ -1,3 +1,4 @@
+import { nominatimGeocoder } from "./geocode";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { JWTVerifyGetKey } from "jose";
@@ -10,7 +11,8 @@ import { createApiKey, listApiKeys, revokeApiKey } from "./auth/apikeys";
 import { authenticate, requireRole } from "./auth/middleware";
 import { grantCredits } from "./billing/credits";
 import { getUsageSummary } from "./billing/usage";
-import { archiveBusiness, archiveTracker, createBusiness, createTracker, getTracker, listBusinesses, updateTracker } from "./catalog";
+import { archiveBusiness, archiveTracker, createBusiness, resolveBusinessInput,
+  createTracker, getTracker, listBusinesses, updateTracker } from "./catalog";
 import { loadConfig } from "./config";
 import { createDb } from "./db";
 import { createDataForSeo } from "./dataforseo";
@@ -177,9 +179,11 @@ export function createApp(options: AppOptions = {}) {
 
   // businesses
   api.get("/businesses", async (c) => c.json(await listBusinesses(c.get("deps").db, c.get("auth").workspaceId)));
-  api.post("/businesses", async (c) =>
-    c.json(await createBusiness(c.get("deps").db, c.get("auth").workspaceId, await body(c, businessInputSchema)), 201),
-  );
+  api.post("/businesses", async (c) => {
+    const deps = c.get("deps");
+    const input = await resolveBusinessInput(await body(c, businessInputSchema), deps.provider, deps.geocode ?? nominatimGeocoder);
+    return c.json(await createBusiness(deps.db, c.get("auth").workspaceId, input), 201);
+  });
   api.delete("/businesses/:id", async (c) => {
     await archiveBusiness(c.get("deps").db, c.get("auth").workspaceId, c.req.param("id"));
     return c.json({ ok: true });

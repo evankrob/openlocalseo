@@ -20,6 +20,7 @@ import type {
   LiveSearchInput,
   LiveSearchResult,
   MockHints,
+  PlaceLookupResult,
   PostTasksInput,
   PostTasksResult,
   SearchType,
@@ -53,6 +54,17 @@ export class MockDataForSeo implements DataForSeoProvider {
   private readonly now: () => number;
   private readonly delays: { standard: number; priority: number };
   private readonly shouldFail: (coordinate: string) => boolean;
+
+  /** Deterministic fake place lookup: ids containing "unknown" resolve to nothing. */
+  async lookupPlace(placeId: string): Promise<PlaceLookupResult | null> {
+    if (placeId.includes("unknown")) return null;
+    let h = 0;
+    for (const ch of placeId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return {
+      place: { name: "Mock Place", address: "101 Mock St, Raleigh, NC", lat: 35.7796 + (h % 1000) / 100000, lng: -78.6382 + (h % 777) / 100000, cid: String(h), category: null, domain: null },
+      billing: { path: ["v3", "business_data", "google", "my_business_info", "live"], costUsd: 0 },
+    };
+  }
 
   constructor(options: MockOptions = {}) {
     this.now = options.now ?? Date.now;

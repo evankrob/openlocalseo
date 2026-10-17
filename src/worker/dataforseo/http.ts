@@ -17,6 +17,7 @@ import {
   type DataForSeoProvider,
   type LiveSearchInput,
   type LiveSearchResult,
+  type PlaceLookupResult,
   type PostTasksInput,
   type PostTasksResult,
   type SearchType,
@@ -90,6 +91,28 @@ export class HttpDataForSeo implements DataForSeoProvider {
     // 40501 is a billed empty SERP, which some coordinate-only queries return.
     const task = assertOk(response, { treatNoResultsAsEmpty: true });
     return { items: parseMapItems(firstResultItems(task)), billing: buildTaskBilling(task) };
+  }
+
+  async lookupPlace(placeId: string): Promise<PlaceLookupResult | null> {
+    const response = await this.request<TaskLike>(
+      "POST",
+      "/v3/business_data/google/my_business_info/live",
+      // location is required by the endpoint; a place_id resolves regardless.
+      [{ keyword: `place_id:${placeId}`, location_code: 2840, language_code: "en" }],
+      { maxServerErrorRetries: 0 },
+    );
+    const task = assertOk(response, { treatNoResultsAsEmpty: true });
+    const billing = buildTaskBilling(task);
+    const items = firstResultItems(task);
+    const item = (Array.isArray(items) ? items[0] : undefined) as Record<string, unknown> | undefined;
+    const lat = Number(item?.latitude);
+    const lng = Number(item?.longitude);
+    if (!item || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+    return {
+      place: { name: str(item.title), address: str(item.address), lat, lng, cid: str(item.cid), category: str(item.category), domain: str(item.domain) },
+      billing,
+    };
   }
 
   private async request<T extends TaskLike>(

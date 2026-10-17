@@ -14,6 +14,8 @@ export function Businesses() {
   const [form, setForm] = useState({ name: "", placeId: "", domain: "", category: "", address: "", lat: "", lng: "" });
   const [geo, setGeo] = useState<Geo[]>([]);
   const [geoBusy, setGeoBusy] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const [needOne, setNeedOne] = useState(false);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const create = useMutation({
@@ -24,8 +26,9 @@ export function Businesses() {
         domain: form.domain || null,
         category: form.category || null,
         address: form.address || null,
-        lat: Number(form.lat),
-        lng: Number(form.lng),
+        // Blank = let the server work it out from the place ID or address.
+        lat: form.lat.trim() ? Number(form.lat) : null,
+        lng: form.lng.trim() ? Number(form.lng) : null,
       }),
     onSuccess: () => {
       setForm({ name: "", placeId: "", domain: "", category: "", address: "", lat: "", lng: "" });
@@ -55,13 +58,13 @@ export function Businesses() {
         <CardHeader title="Add a business" />
         <form
           className="grid gap-4 p-5 md:grid-cols-2"
-          onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
+          onSubmit={(e) => { e.preventDefault(); if (!form.placeId.trim() && !form.address.trim()) { setNeedOne(true); return; } setNeedOne(false); create.mutate(); }}
         >
           <Field label="Business name"><Input required value={form.name} onChange={set("name")} placeholder="Maple & Ember Coffee Roasters" /></Field>
           <Field label="Website domain" hint="Used to recognise the business in results if no place ID."><Input value={form.domain} onChange={set("domain")} placeholder="example.com" /></Field>
-          <Field label="Google place ID (optional)" hint="Exact match. Starts with ChIJ."><Input value={form.placeId} onChange={set("placeId")} /></Field>
+          <Field label="Google place ID" hint="Starts with ChIJ. Fills in the map location for you. Give this or an address."><Input value={form.placeId} onChange={set("placeId")} /></Field>
           <Field label="Category (optional)"><Input value={form.category} onChange={set("category")} placeholder="Coffee shop" /></Field>
-          <Field className="md:col-span-2" label="Address" hint="Search finds coordinates with OpenStreetMap. You can also type latitude/longitude directly.">
+          <Field className="md:col-span-2" label="Address" hint="Needed only if you have no place ID. The map location is found automatically when you add the business.">
             <div className="flex gap-2">
               <Input value={form.address} onChange={set("address")} placeholder="101 Main St, Raleigh, NC" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
               <Button type="button" variant="outline" onClick={search} disabled={geoBusy}>{geoBusy ? "Searching" : "Find"}</Button>
@@ -78,11 +81,19 @@ export function Businesses() {
               </ul>
             )}
           </Field>
-          <Field label="Latitude"><Input required type="number" step="any" value={form.lat} onChange={set("lat")} /></Field>
-          <Field label="Longitude"><Input required type="number" step="any" value={form.lng} onChange={set("lng")} /></Field>
+          <div className="md:col-span-2">
+            <button type="button" className="text-sm text-muted-foreground underline" onClick={() => setAdvanced((a) => !a)}>{advanced ? "Hide advanced" : "Advanced: set exact coordinates"}</button>
+          </div>
+          {advanced && (
+            <>
+              <Field label="Latitude (optional)"><Input type="number" step="any" value={form.lat} onChange={set("lat")} /></Field>
+              <Field label="Longitude (optional)"><Input type="number" step="any" value={form.lng} onChange={set("lng")} /></Field>
+            </>
+          )}
           <div className="md:col-span-2 space-y-2">
+            {needOne && <p className="text-sm text-destructive">Add a Google place ID or an address so we can find the business on the map.</p>}
             <ErrorNote error={create.error} />
-            <Button type="submit" disabled={create.isPending}>Add business</Button>
+            <Button type="submit" disabled={create.isPending}>{create.isPending ? "Finding location..." : "Add business"}</Button>
           </div>
         </form>
       </Card>

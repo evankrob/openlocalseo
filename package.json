@@ -15,7 +15,9 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:seed:local": "tsx scripts/seed.ts && wrangler d1 execute DB --local --file=.wrangler/seed.sql",
     "db:reset:local": "rm -rf .wrangler/state && wrangler d1 migrations apply DB --local && npm run db:seed:local",
-    "cf-typegen": "wrangler types src/worker/worker-configuration.d.ts"
+    "cf-typegen": "wrangler types src/worker/worker-configuration.d.ts",
+    "lint": "oxlint",
+    "check": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -48,6 +50,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "drizzle-kit": "^0.31.11",
+    "oxlint": "^1.88.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",

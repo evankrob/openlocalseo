@@ -1,13 +1,27 @@
 {
-  "include": ["src", "tests", "scripts", "drizzle.config.ts", "vite.config.ts"],
+  "include": [
+    "src",
+    "tests",
+    "scripts",
+    "drizzle.config.ts",
+    "vite.config.ts"
+  ],
   "compilerOptions": {
     "strict": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "types": ["@cloudflare/workers-types", "vite/client", "node"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "types": [
+      "@cloudflare/workers-types",
+      "vite/client",
+      "node"
+    ],
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
@@ -15,7 +29,14 @@
     "target": "ES2022",
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": false,
-    "paths": { "@/*": ["./src/*"] },
-    "noEmit": true
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "noEmit": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true
   }
 }

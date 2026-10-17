@@ -22,7 +22,7 @@ export function createDataForSeo(env: DataForSeoEnv): DataForSeoProvider {
         "DATAFORSEO_MODE=live requires DATAFORSEO_API_KEY (base64 of login:password)",
       );
     }
-    return new HttpDataForSeo(env.DATAFORSEO_API_KEY);
+    return new HttpDataForSeo(normalizeDataForSeoKey(env.DATAFORSEO_API_KEY));
   }
   const seconds = (value: string | undefined, fallback: number) => {
     const parsed = Number(value);
@@ -37,3 +37,21 @@ export function createDataForSeo(env: DataForSeoEnv): DataForSeoProvider {
 }
 
 export type { DataForSeoProvider } from "./types";
+
+/**
+ * Accepts the key as base64("login:password") or as raw "login:password" and
+ * returns the base64 form sent in the Basic auth header. Trims whitespace.
+ */
+export function normalizeDataForSeoKey(value: string): string {
+  const key = value.trim();
+  if (key.includes(":")) return btoa(key);
+  try {
+    if (atob(key).includes(":")) return key;
+  } catch {
+    // not base64; fall through
+  }
+  throw new AppError(
+    "DATAFORSEO_AUTH_FAILED",
+    "The saved DataForSEO API key is not in a usable form. Save it as login:password (or its base64).",
+  );
+}

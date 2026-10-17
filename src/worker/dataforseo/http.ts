@@ -175,8 +175,12 @@ function searchBody(input: Omit<LiveSearchInput, "coordinate" | "mockHints">, co
     device: input.device,
     os: input.device === "desktop" ? "windows" : "android",
     depth: input.depth,
-    // Maps only: skip the "places" sub-search so results stay one flat list.
-    ...(input.searchType === "maps" ? { search_places: false } : {}),
+    // Maps only: skip the "places" sub-search so results stay one flat list,
+    // and rank like a fresh search from this spot. DataForSEO defaults to
+    // search_this_area=true, which only lists businesses pinned inside the
+    // zoom-15 viewport (a few hundred metres), so most nearby service-area
+    // businesses were dropped and the tracked business looked "not found".
+    ...(input.searchType === "maps" ? { search_places: false, search_this_area: false } : {}),
   };
 }
 

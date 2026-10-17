@@ -41,7 +41,7 @@ describe("HttpDataForSeo against recorded-shape fixtures (no network)", () => {
     expect(init?.headers).toMatchObject({ Authorization: "Basic dGVzdDp0ZXN0" });
     const body = JSON.parse(init!.body as string);
     expect(body).toHaveLength(3);
-    expect(body[1]).toMatchObject({ location_coordinate: "2,2,15z", priority: 1, tag: "1", search_places: false });
+    expect(body[1]).toMatchObject({ location_coordinate: "2,2,15z", priority: 1, tag: "1", search_places: false, search_this_area: false });
   });
 
   it("uses priority 2 for the priority queue and the local_finder path for Local Finder", async () => {
@@ -51,6 +51,7 @@ describe("HttpDataForSeo against recorded-shape fixtures (no network)", () => {
     expect(url).toBe("https://dfs.test/v3/serp/google/local_finder/task_post");
     expect(JSON.parse(init!.body as string)[0]).toMatchObject({ priority: 2, os: "windows" });
     expect(JSON.parse(init!.body as string)[0]).not.toHaveProperty("search_places");
+    expect(JSON.parse(init!.body as string)[0]).not.toHaveProperty("search_this_area");
   });
 
   it("refuses more than 100 tasks in one post", async () => {

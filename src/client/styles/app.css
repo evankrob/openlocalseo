@@ -55,13 +55,13 @@
   --sidebar: oklch(91% 0 0);
   --sidebar-border: oklch(86% 0 0);
 
-  /* Rank tiers: one blue ramp, darker = better rank (validated ordinal ramp:
-     scripts in the dataviz method; light end clears 2:1 on the surface). */
-  --rank-1: #104281; /* 1-3   */
-  --rank-2: #256abf; /* 4-7   */
-  --rank-3: #5598e7; /* 8-12  */
-  --rank-4: #86b6ef; /* 13-20 */
-  --rank-none: #d9d8d4; /* not found in the top 20 */
+  /* Rank tiers: standard local-SEO heat map, green (best) to red (not found).
+     Text colour per tier meets WCAG AA (>= 4.5:1); see src/shared/rank.test.ts. */
+  --rank-1: #15803d; /* 1-3   green,        white text */
+  --rank-2: #84cc16; /* 4-7   yellow-green, dark text  */
+  --rank-3: #facc15; /* 8-12  yellow,       dark text  */
+  --rank-4: #f97316; /* 13-20 orange,       dark text  */
+  --rank-none: #dc2626; /* not in the top 20, red, white text */
   --rank-text-dark: #0b0b0b;
   --rank-text-light: #ffffff;
   --series-1: #2a78d6;
@@ -86,11 +86,12 @@
     --input: oklch(40% 0 0);
     --sidebar: oklch(24% 0 0);
     --sidebar-border: oklch(31% 0 0);
-    --rank-1: #86b6ef;
-    --rank-2: #5598e7;
-    --rank-3: #2a78d6;
-    --rank-4: #184f95;
-    --rank-none: #383835;
+    /* Heat map colours stay the same in dark mode. */
+    --rank-1: #15803d;
+    --rank-2: #84cc16;
+    --rank-3: #facc15;
+    --rank-4: #f97316;
+    --rank-none: #dc2626;
     --rank-text-dark: #0b0b0b;
     --rank-text-light: #ffffff;
     --series-1: #3987e5;
@@ -112,16 +113,16 @@ body,
   width: 30px;
   height: 30px;
   border-radius: 9999px;
-  font: 600 12px/1 system-ui, sans-serif;
+  font: 700 12px/1 system-ui, sans-serif;
   border: 2px solid var(--card);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
   cursor: pointer;
 }
 .rank-pin[data-tier="1"] { background: var(--rank-1); color: var(--rank-text-light); }
-.rank-pin[data-tier="2"] { background: var(--rank-2); color: var(--rank-text-light); }
+.rank-pin[data-tier="2"] { background: var(--rank-2); color: var(--rank-text-dark); }
 .rank-pin[data-tier="3"] { background: var(--rank-3); color: var(--rank-text-dark); }
 .rank-pin[data-tier="4"] { background: var(--rank-4); color: var(--rank-text-dark); }
-.rank-pin[data-tier="none"] { background: var(--rank-none); color: var(--foreground); }
+.rank-pin[data-tier="none"] { background: var(--rank-none); color: var(--rank-text-light); }
 .rank-pin[data-tier="failed"] { background: var(--card); color: var(--destructive); border: 2px dashed var(--destructive); }
 .rank-pin[data-selected="true"] { outline: 3px solid var(--foreground); outline-offset: 1px; }
 .rank-pin.small { width: 22px; height: 22px; font-size: 10px; }

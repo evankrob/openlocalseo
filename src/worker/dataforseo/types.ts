@@ -85,6 +85,8 @@ export interface DataForSeoProvider {
 }
 
 export type PlaceInfo = {
+  /** The place ID Google returned; compared against the one requested. */
+  placeId: string | null;
   name: string | null;
   address: string | null;
   lat: number;

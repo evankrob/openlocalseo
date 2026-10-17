@@ -110,7 +110,7 @@ export class HttpDataForSeo implements DataForSeoProvider {
     if (!item || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
     const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
     return {
-      place: { name: str(item.title), address: str(item.address), lat, lng, cid: str(item.cid), category: str(item.category), domain: str(item.domain) },
+      place: { placeId: str(item.place_id), name: str(item.title), address: str(item.address), lat, lng, cid: str(item.cid), category: str(item.category), domain: str(item.domain) },
       billing,
     };
   }

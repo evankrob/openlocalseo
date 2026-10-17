@@ -61,7 +61,7 @@ export class MockDataForSeo implements DataForSeoProvider {
     let h = 0;
     for (const ch of placeId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
     return {
-      place: { name: "Mock Place", address: "101 Mock St, Raleigh, NC", lat: 35.7796 + (h % 1000) / 100000, lng: -78.6382 + (h % 777) / 100000, cid: String(h), category: null, domain: null },
+      place: { placeId: placeId.includes("other") ? "ChIJsomethingElse" : placeId, name: "Mock Place", address: "101 Mock St, Raleigh, NC", lat: 35.7796 + (h % 1000) / 100000, lng: -78.6382 + (h % 777) / 100000, cid: String(h), category: null, domain: null },
       billing: { path: ["v3", "business_data", "google", "my_business_info", "live"], costUsd: 0 },
     };
   }

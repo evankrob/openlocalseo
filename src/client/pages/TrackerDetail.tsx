@@ -7,7 +7,7 @@ import { cn } from "../lib/cn";
 import { fmtDateTime, fmtNum, fmtPct, fmtUsd } from "../lib/format";
 import type { Me, PointResults, ScanDetail, ScanListItem, ScanViewData, TrackerSummary } from "../lib/types";
 import { RankLegend, RankMap } from "../components/RankMap";
-import { ScanView } from "../components/ScanView";
+import { ScanView, OtherListingsNote } from "../components/ScanView";
 import { TrendCharts } from "../components/TrendCharts";
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Select, Spinner, Table, Td, Th } from "../components/ui";
 import { statusTone } from "./Dashboard";
@@ -121,6 +121,7 @@ function LatestScan({ scanId }: { scanId: string }) {
   return (
     <>
       <p className="text-sm text-muted-foreground">Scanned {fmtDateTime(q.data.scan.createdAt)} &middot; <Link className="underline" to={`/scans/${scanId}`}>open scan</Link></p>
+      <OtherListingsNote listings={q.data.otherListings} />
       <ScanView data={toViewData(q.data)} loadPoint={loadScanPoint(scanId)} queryKey={["scan", scanId]} />
     </>
   );

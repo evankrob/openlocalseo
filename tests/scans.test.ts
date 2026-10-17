@@ -283,3 +283,18 @@ describe("BYOK mode", () => {
     expect(await h.db.select().from(creditLedger)).toHaveLength(0);
   });
 });
+
+describe("other listings note", () => {
+  it("flags the tracked website ranking under a different place ID", async () => {
+    const { getScanDetail } = await import("@/worker/scans/queries");
+    const ws = await seedWorkspace(h.db);
+    const { trackerId } = await seedTracker(h.db, ws);
+    const { scanId } = await createScan(h.deps, ws, trackerId, { trigger: "manual" });
+    await h.queue.drain(h.deps);
+    const [p1, p2] = await h.db.select().from(scanPoints).where(eq(scanPoints.scanId, scanId)).limit(2);
+    const row = (pointId: string, rank: number) => ({ id: `x-${pointId}`, scanId, pointId, rank, businessKey: "ChIJotherListing", name: "Maple & Ember (duplicate)", placeId: "ChIJotherListing", domain: "www.mapleember.example", isTarget: false });
+    await h.db.insert(scanResults).values([row(p1.id, 4), row(p2.id, 2)]);
+    const detail = await getScanDetail(h.db, scanId, { workspaceId: ws });
+    expect(detail.otherListings).toEqual([{ name: "Maple & Ember (duplicate)", placeId: "ChIJotherListing", points: 2, bestRank: 2 }]);
+  });
+});

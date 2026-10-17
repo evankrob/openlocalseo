@@ -1,3 +1,5 @@
+import type { DataForSeoProvider } from "./dataforseo/types";
+import type { Geocoder } from "./geocode";
 // Businesses and trackers (saved grid configurations).
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { toKm, validateGridInput } from "@/shared/grid";
@@ -28,7 +30,48 @@ export async function getBusiness(db: Db, workspaceId: string, id: string) {
   return row;
 }
 
-export async function createBusiness(db: Db, workspaceId: string, input: BusinessInput) {
+/**
+ * Fills in what the user did not type: coordinates (and blank name parts) from
+ * the Google place ID via DataForSEO, else coordinates from the address.
+ */
+export async function resolveBusinessInput(
+  input: BusinessInput,
+  provider: DataForSeoProvider,
+  geocode: Geocoder,
+): Promise<BusinessInput & { lat: number; lng: number }> {
+  if (input.lat != null && input.lng != null) return { ...input, lat: input.lat, lng: input.lng };
+  if (!input.placeId && !input.address) {
+    throw new AppError("VALIDATION_ERROR", "Add a Google place ID or an address so we can find the business on the map.");
+  }
+  if (input.placeId && provider.lookupPlace) {
+    const found = await provider.lookupPlace(input.placeId);
+    if (found) {
+      console.log("business.place-lookup", { costUsd: found.billing.costUsd });
+      const p = found.place;
+      return {
+        ...input,
+        address: input.address ?? p.address,
+        category: input.category ?? p.category,
+        domain: input.domain ?? p.domain,
+        cid: input.cid ?? p.cid,
+        lat: p.lat,
+        lng: p.lng,
+      };
+    }
+  }
+  if (input.address) {
+    const geo = await geocode(input.address);
+    if (geo) return { ...input, lat: geo.lat, lng: geo.lng };
+  }
+  throw new AppError(
+    "VALIDATION_ERROR",
+    input.placeId
+      ? "We couldn't find that place ID on Google. Check it starts with ChIJ, or add the street address instead."
+      : "We couldn't find that address on the map. Try adding the city and state.",
+  );
+}
+
+export async function createBusiness(db: Db, workspaceId: string, input: BusinessInput & { lat: number; lng: number }) {
   const id = newId();
   await db.insert(businesses).values({
     id,

@@ -80,7 +80,21 @@ export interface DataForSeoProvider {
   getTask(searchType: SearchType, taskId: string): Promise<TaskOutcome>;
   /** Single synchronous search at the live price. */
   liveSearch(input: LiveSearchInput): Promise<LiveSearchResult>;
+  /** Google business details for a place ID (one cheap live call); null if unknown. */
+  lookupPlace?(placeId: string): Promise<PlaceLookupResult | null>;
 }
+
+export type PlaceInfo = {
+  name: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  cid: string | null;
+  category: string | null;
+  domain: string | null;
+};
+
+export type PlaceLookupResult = { place: PlaceInfo; billing: CallBilling };
 
 /** DataForSEO accepts at most 100 tasks in one task_post request. */
 export const MAX_TASKS_PER_POST = 100;

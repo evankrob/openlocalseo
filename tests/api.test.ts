@@ -99,6 +99,39 @@ describe("local_noauth: the whole flow over HTTP", () => {
     expect((await call("POST", "/api/businesses", { name: "x", lat: 200, lng: 0 })).status).toBe(400);
   });
 
+  it("fills coordinates from the place ID, so lat/lng are never typed", async () => {
+    const { call } = client(h);
+    const res = await call("POST", "/api/businesses", { name: "Maple", placeId: "ChIJabc123", domain: "", address: "" });
+    expect(res.status).toBe(201);
+    expect(res.json.lat).toBeCloseTo(35.78, 1);
+    expect(res.json.address).toBe("101 Mock St, Raleigh, NC");
+  });
+
+  it("geocodes the address when there is no place ID, without the Find button", async () => {
+    const seen: string[] = [];
+    h.deps.geocode = async (a) => { seen.push(a); return { lat: 40.1, lng: -75.2, address: "x" }; };
+    const { call } = client(h);
+    const res = await call("POST", "/api/businesses", { name: "Shop", address: "1 Main St, Doylestown, PA" });
+    expect(res.status).toBe(201);
+    expect([res.json.lat, res.json.lng, res.json.address]).toEqual([40.1, -75.2, "1 Main St, Doylestown, PA"]);
+    expect(seen).toEqual(["1 Main St, Doylestown, PA"]);
+  });
+
+  it("falls back to the address when the place ID is unknown, and explains when nothing resolves", async () => {
+    h.deps.geocode = async () => null;
+    const { call } = client(h);
+    const none = await call("POST", "/api/businesses", { name: "Shop" });
+    expect(none.status).toBe(400);
+    expect(none.json.error.message).toMatch(/place ID or an address/);
+    const bad = await call("POST", "/api/businesses", { name: "Shop", placeId: "ChIJunknown" });
+    expect(bad.status).toBe(400);
+    expect(bad.json.error.message).toMatch(/couldn't find that place ID/);
+    h.deps.geocode = async () => ({ lat: 1, lng: 2, address: "y" });
+    const viaAddr = await call("POST", "/api/businesses", { name: "Shop", placeId: "ChIJunknown", address: "5 Elm" });
+    expect(viaAddr.status).toBe(201);
+    expect(viaAddr.json.lat).toBe(1);
+  });
+
   it("refuses to run on a non-local hostname, so a deployed copy is never open", async () => {
     const app = createApp({ resolveDeps: () => h.deps });
     const res = await app.request("https://tracker.example.com/api/me", {}, {} as Env);

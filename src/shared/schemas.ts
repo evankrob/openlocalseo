@@ -26,8 +26,9 @@ export const businessInputSchema = z.object({
   domain: optionalText(200),
   address: optionalText(300),
   category: optionalText(120),
-  lat: z.number().min(-85).max(85),
-  lng: z.number().min(-180).max(180),
+  // Optional: filled from the place ID or by geocoding the address when blank.
+  lat: z.number().min(-85).max(85).nullable().optional(),
+  lng: z.number().min(-180).max(180).nullable().optional(),
 });
 export type BusinessInput = z.infer<typeof businessInputSchema>;
 

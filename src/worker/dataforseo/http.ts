@@ -159,6 +159,9 @@ export class HttpDataForSeo implements DataForSeoProvider {
             : response.status === 401
               ? "DATAFORSEO_AUTH_FAILED"
               : "INTERNAL_ERROR";
+      if (code === "DATAFORSEO_AUTH_FAILED") {
+        throw new AppError(code, "DataForSEO rejected the API key. Check the DataForSEO login and password saved for this app.");
+      }
       throw new AppError(code, `DataForSEO HTTP ${response.status} on ${path}`);
     }
   }

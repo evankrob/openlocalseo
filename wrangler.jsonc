@@ -52,5 +52,30 @@
 
   // Daily tick; the handler starts any monthly schedule whose next_run_at is
   // due (see src/worker/scheduled.ts).
-  "triggers": { "crons": ["15 6 * * *"] }
+  "triggers": { "crons": ["15 6 * * *"] },
+
+  // Production (deployed 2026-10-16, behind Cloudflare Access).
+  // Deploy: npx wrangler deploy --env production
+  // Secret: DATAFORSEO_API_KEY (base64 of login:password) via wrangler secret put.
+  "env": {
+    "production": {
+      "name": "openlocalseo",
+      "workers_dev": true,
+      "vars": {
+        "AUTH_MODE": "cloudflare_access",
+        "BILLING_MODE": "byok",
+        "DATAFORSEO_MODE": "live",
+        "BILLING_MARKUP": "1.28",
+        "TEAM_DOMAIN": "https://raspy-scene-a7ef.cloudflareaccess.com",
+        "POLICY_AUD": "aed019e1fb7fb2bdb326efc1feae1578fe6574c0f85a47a71da6f4c7c7815fec"
+      },
+      "d1_databases": [{ "binding": "DB", "database_name": "openlocalseo", "database_id": "0b00378b-1f43-4de0-af67-fffc68836bcb", "migrations_dir": "migrations" }],
+      "r2_buckets": [{ "binding": "R2", "bucket_name": "openlocalseo" }],
+      "queues": {
+        "producers": [{ "binding": "SCAN_QUEUE", "queue": "openlocalseo-scans" }],
+        "consumers": [{ "queue": "openlocalseo-scans", "max_batch_size": 5, "max_batch_timeout": 2, "max_retries": 5, "dead_letter_queue": "openlocalseo-scans-dlq" }]
+      },
+      "triggers": { "crons": ["15 6 * * *"] }
+    }
+  }
 }

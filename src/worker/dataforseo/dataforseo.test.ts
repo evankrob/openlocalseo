@@ -206,3 +206,10 @@ describe("HttpDataForSeo.lookupPlace", () => {
     expect(await client.lookupPlace("ChIJnothing")).toBeNull();
   });
 });
+
+describe("auth failures", () => {
+  it("explains a rejected API key in plain words", async () => {
+    const { client } = httpWith(new Response("", { status: 401 }));
+    await expect(client.lookupPlace("ChIJx")).rejects.toThrow(/DataForSEO rejected the API key/);
+  });
+});

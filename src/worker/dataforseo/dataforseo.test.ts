@@ -183,7 +183,7 @@ describe("createDataForSeo", () => {
     expect(createDataForSeo({}).mode).toBe("mock");
     expect(createDataForSeo({ DATAFORSEO_API_KEY: "abc" }).mode).toBe("mock");
     expect(() => createDataForSeo({ DATAFORSEO_MODE: "live" })).toThrow(/DATAFORSEO_API_KEY/);
-    expect(createDataForSeo({ DATAFORSEO_MODE: "live", DATAFORSEO_API_KEY: "abc" }).mode).toBe("live");
+    expect(createDataForSeo({ DATAFORSEO_MODE: "live", DATAFORSEO_API_KEY: "test:test" }).mode).toBe("live");
   });
 });
 
@@ -211,5 +211,14 @@ describe("auth failures", () => {
   it("explains a rejected API key in plain words", async () => {
     const { client } = httpWith(new Response("", { status: 401 }));
     await expect(client.lookupPlace("ChIJx")).rejects.toThrow(/DataForSEO rejected the API key/);
+  });
+});
+
+describe("normalizeDataForSeoKey", () => {
+  it("accepts base64 or raw login:password and always returns single base64", async () => {
+    const { normalizeDataForSeoKey } = await import("./index");
+    expect(normalizeDataForSeoKey("test:test")).toBe("dGVzdDp0ZXN0");
+    expect(normalizeDataForSeoKey(" dGVzdDp0ZXN0\n")).toBe("dGVzdDp0ZXN0");
+    expect(() => normalizeDataForSeoKey("[REDACTED]")).toThrow(/not in a usable form/);
   });
 });

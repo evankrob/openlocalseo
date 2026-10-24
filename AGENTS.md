@@ -11,6 +11,7 @@ Local-rank grid tracker (Google Maps) on Cloudflare: Worker (Hono, D1 via Drizzl
 - `src/worker/app.ts` REST routes. `auth/` three auth modes (`local_noauth`, `cloudflare_access` = default, `hosted`), API keys, sessions. `config.ts` env → typed `AppConfig`.
 - `dataforseo/` **the only place that talks to DataForSEO**: `types.ts` provider interface, `http.ts` live client, `mock.ts`/`world.ts` deterministic mock, `parse.ts`/`envelope.ts` response parsing, fixtures + tests.
 - `scans/` grid scan pipeline (service → jobs → process, schedule = Cron, sql.ts bulk writes). `billing/` credit hold/settle/refund + usage. `mcp/` MCP server. `reports.ts` public report links.
+- `alerts.ts` rank-drop alerts (settings, creation at scan finalize, read model); the pure rules + defaults are in `src/shared/alerts.ts`. `notify/` **the only place besides `dataforseo/` that may call `fetch`**: the Slack-compatible webhook sender (https only, 5s timeout, one attempt), injected via `ProcessDeps.notify`.
 - `src/client/` React UI; `src/shared/` code shared by both (pricing, errors).
 - Tests: `tests/*.test.ts` (API in all auth modes, scans on SQLite with real migrations), `src/worker/**/*.test.ts`.
 
@@ -22,11 +23,12 @@ Local-rank grid tracker (Google Maps) on Cloudflare: Worker (Hono, D1 via Drizzl
 5. D1 caps 100 bound params per statement: bulk writes use the `json_each` helpers in `scans/sql.ts`.
 6. Errors are `AppError` with a code from `src/shared/errors`; validate request bodies with zod.
 7. Unknown `AUTH_MODE` falls back to `cloudflare_access`; `local_noauth` only on loopback hosts. Keep it that way.
+8. Alerts are created inside the once-only finalize step via `createAlertsSafely` (errors logged, never thrown; unique on scan + kind). Outbound webhooks are fire-and-forget (`waitUntil` when available), never retried, never block finalization, and the URL is never logged.
 
 ## Verify
 `npm run check`. New DataForSEO behavior → add a recorded-shape fixture + stubbed-fetch test in `dataforseo.test.ts`. New route → test in `tests/api.test.ts` incl. a cross-workspace request.
 
 ## Don'ts
-- No `fetch` outside `dataforseo/` (except the browser geocoder). No `any`, no `@ts-ignore`.
-- No real DataForSEO calls in tests or scripts. Never commit `.env`, `.dev.vars`, API keys, or `dist/`.
+- No `fetch` outside `dataforseo/` and `notify/` (except the browser geocoder). No `any`, no `@ts-ignore`.
+- No real DataForSEO calls or webhook sends in tests or scripts (inject a fake `notify`). Never commit `.env`, `.dev.vars`, API keys, or `dist/`.
 - Don't deploy or change wrangler resource ids.

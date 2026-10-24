@@ -335,3 +335,51 @@ export const reportShares = sqliteTable(
   },
   (t) => [index("report_shares_tracker_idx").on(t.trackerId)],
 );
+
+// ---- rank-drop alerts ------------------------------------------------------------
+
+// Raised when a scan is finalized (scans/alerts.ts). At most one alert per
+// scan and kind, so queue redelivery cannot duplicate it.
+export const alerts = sqliteTable(
+  "alerts",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    trackerId: text("tracker_id")
+      .notNull()
+      .references(() => trackers.id, { onDelete: "cascade" }),
+    scanId: text("scan_id")
+      .notNull()
+      .references(() => scans.id, { onDelete: "cascade" }),
+    previousScanId: text("previous_scan_id").references(() => scans.id, { onDelete: "set null" }),
+    kind: text("kind", { enum: ["rank_drop", "data_problem"] }).notNull(),
+    severity: text("severity", { enum: ["warning", "critical"] }).notNull(),
+    // JSON text, see AlertMetrics in shared/alerts.ts.
+    metrics: text("metrics").notNull(),
+    createdAt: createdAt(),
+    readAt: text("read_at"),
+  },
+  (t) => [
+    uniqueIndex("alerts_scan_kind_idx").on(t.scanId, t.kind),
+    index("alerts_workspace_idx").on(t.workspaceId, t.readAt, t.createdAt),
+  ],
+);
+
+// Per-workspace overrides of the alert rules (defaults in shared/alerts.ts)
+// and the optional Slack-compatible webhook. No row = defaults, webhook off.
+export const alertSettings = sqliteTable("alert_settings", {
+  workspaceId: text("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  atrpWorse: real("atrp_worse").notNull().default(2),
+  solvDown: real("solv_down").notNull().default(15),
+  foundDropPct: real("found_drop_pct").notNull().default(25),
+  centerTop3: integer("center_top3", { mode: "boolean" }).notNull().default(true),
+  criticalAtrp: real("critical_atrp").notNull().default(5),
+  criticalSolv: real("critical_solv").notNull().default(30),
+  // https only; the sender lives in notify/. Treated as a secret.
+  webhookUrl: text("webhook_url"),
+});

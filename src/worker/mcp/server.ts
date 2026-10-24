@@ -7,6 +7,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AppError } from "@/shared/errors";
+import { listAlerts } from "../alerts";
 import type { AuthContext } from "../auth/accounts";
 import { createScan } from "../scans/service";
 import { getScanDetail, listTrackerSummaries, listWorkspaceScans } from "../scans/queries";
@@ -170,6 +171,46 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
         error: s.error,
         url: `${baseUrl}/scans/${s.id}`,
       });
+    }),
+  );
+
+  server.registerTool(
+    "list_alerts",
+    {
+      title: "List alerts",
+      description:
+        "List rank-drop alerts (ATRP/SoLV/found-points drops, lost top-3 at the center, or scans with mostly failed points), unread first. Each shows the metrics before and after.",
+      inputSchema: {
+        unreadOnly: z.boolean().default(false),
+        limit: z.number().int().min(1).max(100).default(20),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    guard(async (args: { unreadOnly: boolean; limit: number }) => {
+      const { alerts: all, unreadCount } = await listAlerts(deps.db, ws, { limit: args.unreadOnly ? 200 : args.limit });
+      const rows = (args.unreadOnly ? all.filter((a) => a.readAt === null) : all).slice(0, args.limit).map((a) => ({
+        alertId: a.id,
+        kind: a.kind,
+        severity: a.severity,
+        trackerId: a.trackerId,
+        business: a.businessName,
+        keyword: a.keyword,
+        scanId: a.scanId,
+        reasons: a.metrics.reasons,
+        before: a.metrics.before,
+        after: a.metrics.after,
+        createdAt: a.createdAt,
+        read: a.readAt !== null,
+        url: `${baseUrl}/scans/${a.scanId}`,
+      }));
+      return ok(
+        rows.length
+          ? rows
+              .map((a) => `${a.read ? "  " : "* "}${a.severity} ${a.kind} ${a.business} / "${a.keyword}": ATRP ${a.before?.atrp ?? "-"} -> ${a.after.atrp ?? "-"}, SoLV ${a.before?.solv ?? "-"} -> ${a.after.solv ?? "-"}%`)
+              .join("\n")
+          : "No alerts.",
+        { unreadCount, alerts: rows },
+      );
     }),
   );
 

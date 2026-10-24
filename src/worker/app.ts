@@ -3,11 +3,13 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { JWTVerifyGetKey } from "jose";
 import { ZodError, z, type ZodType } from "zod";
+import { alertSettingsSchema } from "@/shared/alerts";
 import { ERROR_STATUS, AppError, type ErrorCode } from "@/shared/errors";
 import { brandingSchema, businessInputSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
 import { QUEUE_MODES } from "@/shared/pricing";
 import { SESSION_COOKIE, createSession, createWorkspace, deleteSession, listWorkspaces, logIn, signUp, type AuthContext } from "./auth/accounts";
 import { createApiKey, listApiKeys, revokeApiKey } from "./auth/apikeys";
+import { getAlertSettings, listAlerts, markAlertRead, markAllAlertsRead, saveAlertSettings } from "./alerts";
 import { authenticate, requireRole } from "./auth/middleware";
 import { grantCredits } from "./billing/credits";
 import { getUsageSummary } from "./billing/usage";
@@ -18,6 +20,7 @@ import { createDb } from "./db";
 import { createDataForSeo } from "./dataforseo";
 import type { Env } from "./env";
 import { handleMcpRequest } from "./mcp/server";
+import { createWebhookSender } from "./notify";
 import { createShare, getBranding, getPublicPointResults, getPublicReport, listShares, revokeShare, saveBranding } from "./reports";
 import type { ProcessDeps } from "./scans/process";
 import { getPointResults, getScanDetail, listTrackerScans, listTrackerSummaries, listWorkspaceScans } from "./scans/queries";
@@ -31,7 +34,7 @@ export type AppOptions = {
 };
 
 /** Production wiring: D1, the Queue binding, R2 and the configured provider. */
-export function defaultResolveDeps(env: Env): ProcessDeps {
+export function defaultResolveDeps(env: Env, ctx?: Pick<ExecutionContext, "waitUntil">): ProcessDeps {
   return {
     db: createDb(env.DB),
     queue: {
@@ -40,6 +43,8 @@ export function defaultResolveDeps(env: Env): ProcessDeps {
     },
     config: loadConfig(env),
     provider: createDataForSeo(env),
+    notify: createWebhookSender(),
+    waitUntil: ctx ? (promise) => ctx.waitUntil(promise) : undefined,
     raw: { put: async (key, body) => void (await env.R2.put(key, body, { httpMetadata: { contentType: "application/json" } })) },
   };
 }
@@ -250,6 +255,32 @@ export function createApp(options: AppOptions = {}) {
   api.get("/scans/:id/points/:pointId", async (c) =>
     c.json(await getPointResults(c.get("deps").db, c.req.param("id"), c.req.param("pointId"), { workspaceId: c.get("auth").workspaceId })),
   );
+
+  // alerts
+  api.get("/alerts", async (c) => {
+    const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }).parse({ limit: c.req.query("limit") });
+    return c.json(await listAlerts(c.get("deps").db, c.get("auth").workspaceId, { limit }));
+  });
+  api.post("/alerts/read-all", async (c) =>
+    c.json({ updated: await markAllAlertsRead(c.get("deps").db, c.get("auth").workspaceId) }),
+  );
+  api.post("/alerts/:id/read", async (c) => {
+    await markAlertRead(c.get("deps").db, c.get("auth").workspaceId, c.req.param("id"));
+    return c.json({ ok: true });
+  });
+  api.get("/alert-settings", async (c) => {
+    const auth = c.get("auth");
+    const settings = await getAlertSettings(c.get("deps").db, auth.workspaceId);
+    // The webhook URL is a secret: only admins see it.
+    const isAdmin = auth.role !== "member";
+    return c.json({ ...settings, webhookConfigured: settings.webhookUrl !== null, webhookUrl: isAdmin ? settings.webhookUrl : null });
+  });
+  api.put("/alert-settings", async (c) => {
+    const auth = c.get("auth");
+    requireRole(auth, "admin");
+    const saved = await saveAlertSettings(c.get("deps").db, auth.workspaceId, await body(c, alertSettingsSchema));
+    return c.json({ ...saved, webhookConfigured: saved.webhookUrl !== null });
+  });
 
   // settings
   api.get("/branding", async (c) => c.json(await getBranding(c.get("deps").db, c.get("auth").workspaceId)));

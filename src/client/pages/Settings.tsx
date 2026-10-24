@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { del, get, post, put } from "../lib/api";
 import { fmtDateTime } from "../lib/format";
-import type { Me } from "../lib/types";
+import type { AlertSettings, Me } from "../lib/types";
 import { Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Table, Td, Textarea, Th } from "../components/ui";
 import { PageHeader } from "./shell";
 
@@ -18,6 +18,7 @@ export function Settings() {
       <PageHeader title="Settings" description={`Workspace: ${me.workspace.name}`} />
       {admin ? (
         <>
+          <AlertSettingsCard />
           <BrandingCard />
           <KeysCard />
         </>
@@ -25,6 +26,48 @@ export function Settings() {
         <Card><EmptyState title="Branding and API keys are managed by workspace admins" /></Card>
       )}
     </>
+  );
+}
+
+const THRESHOLDS = [
+  { key: "atrpWorse", label: "ATRP worse by", hint: "Positions, e.g. 2 = from 4.0 to 6.0.", max: 20 },
+  { key: "solvDown", label: "SoLV down by", hint: "Percentage points.", max: 100 },
+  { key: "foundDropPct", label: "Found points down by", hint: "% of all grid points.", max: 100 },
+  { key: "criticalAtrp", label: "Critical when ATRP worse by", hint: "Positions.", max: 20 },
+  { key: "criticalSolv", label: "Critical when SoLV down by", hint: "Percentage points.", max: 100 },
+] as const;
+
+function AlertSettingsCard() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["alert-settings"], queryFn: () => get<AlertSettings>("/alert-settings") });
+  const [f, setF] = useState<AlertSettings | null>(null);
+  useEffect(() => { if (q.data) setF(q.data); }, [q.data]);
+  const save = useMutation({
+    mutationFn: () => {
+      const { webhookConfigured: _configured, ...values } = f!;
+      return put("/alert-settings", { ...values, webhookUrl: f!.webhookUrl ?? "" });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alert-settings"] }),
+  });
+  if (!f) return null;
+  const set = <K extends keyof AlertSettings>(k: K, v: AlertSettings[K]) => setF({ ...f, [k]: v });
+  return (
+    <Card>
+      <CardHeader title="Rank-drop alerts" description="After each scan, compare with the previous scan of the same tracker (same grid, radius, zoom, search type and keyword) and flag a meaningful drop." />
+      <form className="grid gap-4 p-5 md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <label className="flex items-center gap-2 text-sm md:col-span-2"><input type="checkbox" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} /> Alerts on</label>
+        {THRESHOLDS.map(({ key, label, hint, max }) => (
+          <Field key={key} label={label} hint={hint}>
+            <Input type="number" min={0} max={max} step="any" required value={f[key]} onChange={(e) => set(key, Number(e.target.value))} />
+          </Field>
+        ))}
+        <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" checked={f.centerTop3} onChange={(e) => set("centerTop3", e.target.checked)} /> Alert when the business leaves the top 3 at the center point</label>
+        <Field className="md:col-span-2" label="Webhook URL (optional)" hint="Slack-compatible incoming webhook (https). Receives a short text message for each new alert. Leave empty to turn off.">
+          <Input type="url" value={f.webhookUrl ?? ""} onChange={(e) => set("webhookUrl", e.target.value)} placeholder="https://hooks.slack.com/services/..." />
+        </Field>
+        <div className="md:col-span-2 space-y-2"><ErrorNote error={save.error} /><Button type="submit" disabled={save.isPending}>{save.isSuccess ? "Saved" : "Save alert settings"}</Button></div>
+      </form>
+    </Card>
   );
 }
 
@@ -68,7 +111,7 @@ function KeysCard() {
   const origin = window.location.origin;
   return (
     <Card>
-      <CardHeader title="API keys &amp; MCP" description="Let an AI assistant run and read scans. Tools: list_trackers, run_scan, list_scans, get_scan." />
+      <CardHeader title="API keys &amp; MCP" description="Let an AI assistant run and read scans. Tools: list_trackers, run_scan, list_scans, get_scan, list_alerts." />
       <div className="space-y-4 p-5">
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
           <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Key name, e.g. Claude" />

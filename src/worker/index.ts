@@ -10,8 +10,8 @@ export default {
   fetch: app.fetch,
 
   // Queue consumer: one message per scan step (see scans/process.ts).
-  async queue(batch: MessageBatch<ScanJob>, env: Env): Promise<void> {
-    const deps = defaultResolveDeps(env);
+  async queue(batch: MessageBatch<ScanJob>, env: Env, ctx: ExecutionContext): Promise<void> {
+    const deps = defaultResolveDeps(env, ctx);
     for (const message of batch.messages) {
       try {
         await handleScanJob(deps, message.body);

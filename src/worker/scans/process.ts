@@ -14,6 +14,7 @@ import type { Db } from "../db";
 import { apiCalls, businesses, scanPoints, scanResults, scans, trackers } from "../db/schema";
 import type { DataForSeoProvider, LiveSearchInput, MapResult, MockHints } from "../dataforseo/types";
 import { MAX_TASKS_PER_POST } from "../dataforseo/types";
+import { handleGbpJob } from "../gbp/process";
 import { chunk, newId, nowIso } from "../lib";
 import type { WebhookSender } from "../notify";
 import { COLLECT_CHUNK, LIVE_CHUNK, type ScanJob } from "./jobs";
@@ -49,6 +50,9 @@ export async function handleScanJob(deps: ProcessDeps, job: ScanJob): Promise<vo
       return handleCollect(deps, job.scanId, job.pointIds);
     case "live":
       return handleLive(deps, job.scanId, job.pointIds);
+    case "gbp_snapshot":
+    case "gbp_reviews_collect":
+      return handleGbpJob(deps, job);
   }
 }
 

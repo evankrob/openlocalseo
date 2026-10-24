@@ -1,5 +1,7 @@
 import { createApp, defaultResolveDeps } from "./app";
 import type { Env } from "./env";
+import { reapStaleGbpSnapshots } from "./gbp/process";
+import { runDueGbpSnapshots } from "./gbp/service";
 import { handleScanJob } from "./scans/process";
 import type { ScanJob } from "./scans/jobs";
 import { runDueSchedules } from "./scans/schedule";
@@ -25,9 +27,12 @@ export default {
     }
   },
 
-  // Daily Cron: start due monthly scans, reap stuck ones.
+  // Daily Cron: start due monthly scans and profile snapshots, reap stuck ones.
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    const summary = await runDueSchedules(defaultResolveDeps(env));
+    const deps = defaultResolveDeps(env);
+    const summary = await runDueSchedules(deps);
     console.log("schedule.tick", summary);
+    const gbp = await runDueGbpSnapshots(deps);
+    console.log("schedule.gbp-tick", { ...gbp, reaped: await reapStaleGbpSnapshots(deps) });
   },
 } satisfies ExportedHandler<Env, ScanJob>;

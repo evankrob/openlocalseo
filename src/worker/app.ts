@@ -5,7 +5,8 @@ import type { JWTVerifyGetKey } from "jose";
 import { ZodError, z, type ZodType } from "zod";
 import { alertSettingsSchema } from "@/shared/alerts";
 import { ERROR_STATUS, AppError, type ErrorCode } from "@/shared/errors";
-import { brandingSchema, businessInputSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
+import { gbpRefreshSchema, reviewsQuerySchema } from "@/shared/gbp";
+import { brandingSchema, businessInputSchema, businessPatchSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
 import { QUEUE_MODES } from "@/shared/pricing";
 import { SESSION_COOKIE, createSession, createWorkspace, deleteSession, listWorkspaces, logIn, signUp, type AuthContext } from "./auth/accounts";
 import { createApiKey, listApiKeys, revokeApiKey } from "./auth/apikeys";
@@ -14,7 +15,9 @@ import { authenticate, requireRole } from "./auth/middleware";
 import { grantCredits } from "./billing/credits";
 import { getUsageSummary } from "./billing/usage";
 import { archiveBusiness, archiveTracker, createBusiness, resolveBusinessInput,
-  createTracker, getTracker, listBusinesses, updateTracker } from "./catalog";
+  createTracker, getBusiness, getTracker, listBusinesses, updateTracker } from "./catalog";
+import { getGbpOverview, listReviews } from "./gbp/queries";
+import { createGbpSnapshot, quoteGbpSnapshot, setGbpTracking } from "./gbp/service";
 import { loadConfig } from "./config";
 import { createDb } from "./db";
 import { createDataForSeo } from "./dataforseo";
@@ -188,6 +191,44 @@ export function createApp(options: AppOptions = {}) {
     const deps = c.get("deps");
     const input = await resolveBusinessInput(await body(c, businessInputSchema), deps.provider, deps.geocode ?? nominatimGeocoder);
     return c.json(await createBusiness(deps.db, c.get("auth").workspaceId, input), 201);
+  });
+  api.patch("/businesses/:id", async (c) => {
+    const { db } = c.get("deps");
+    const auth = c.get("auth");
+    const patch = await body(c, businessPatchSchema);
+    // Looked up first so another workspace's business is a 404 even for an empty patch.
+    let business = await getBusiness(db, auth.workspaceId, c.req.param("id"));
+    if (patch.gbpTracking !== undefined) {
+      business = await setGbpTracking(db, auth.workspaceId, business.id, patch.gbpTracking);
+    }
+    return c.json(business);
+  });
+  api.get("/businesses/:id/gbp", async (c) => {
+    const { db, config } = c.get("deps");
+    const overview = await getGbpOverview(db, c.get("auth").workspaceId, c.req.param("id"));
+    const quote = quoteGbpSnapshot(config);
+    // A monthly run is one snapshot a month.
+    return c.json({ ...overview, quote, monthlyCostUsd: quote.chargedUsd });
+  });
+  api.post("/businesses/:id/gbp/refresh", async (c) => {
+    const raw = await c.req.json().catch(() => ({}));
+    const input = gbpRefreshSchema.parse(raw);
+    const result = await createGbpSnapshot(c.get("deps"), c.get("auth").workspaceId, c.req.param("id"), { trigger: "manual", maxCostUsd: input.maxCostUsd });
+    return c.json(result, 202);
+  });
+  api.get("/businesses/:id/reviews", async (c) => {
+    const query = reviewsQuerySchema.parse({
+      limit: c.req.query("limit"),
+      cursor: c.req.query("cursor"),
+      unanswered: c.req.query("unanswered"),
+    });
+    return c.json(
+      await listReviews(c.get("deps").db, c.get("auth").workspaceId, c.req.param("id"), {
+        limit: query.limit,
+        cursor: query.cursor,
+        unansweredOnly: query.unanswered,
+      }),
+    );
   });
   api.delete("/businesses/:id", async (c) => {
     await archiveBusiness(c.get("deps").db, c.get("auth").workspaceId, c.req.param("id"));

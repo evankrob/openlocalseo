@@ -47,3 +47,19 @@ export function creditsToUsd(credits: number): number {
 export function roundUsd(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
+
+// Google Business Profile tracking (DataForSEO Business Data API). The profile
+// call is live-only; the reviews task is billed per 10 reviews at post time and
+// collected for free. Upper-bound estimates: real costs come from each response.
+export const GBP_PROFILE_PRICE_USD = 0.0054;
+export const GBP_REVIEWS_PRICE_PER_10_USD = 0.00075;
+/** Newest reviews fetched per snapshot. */
+export const GBP_REVIEWS_DEPTH = 20;
+
+export function estimateGbpReviewsCostUsd(depth: number = GBP_REVIEWS_DEPTH): number {
+  return roundUsd(Math.ceil(depth / 10) * GBP_REVIEWS_PRICE_PER_10_USD);
+}
+
+export function estimateGbpSnapshotCostUsd(depth: number = GBP_REVIEWS_DEPTH): number {
+  return roundUsd(GBP_PROFILE_PRICE_USD + estimateGbpReviewsCostUsd(depth));
+}

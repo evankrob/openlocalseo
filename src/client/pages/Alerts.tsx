@@ -22,6 +22,8 @@ const REASON_LABEL: Record<string, string> = {
   failed_points: "Most points failed",
 };
 
+const GBP_KIND_LABEL = { rating_drop: "Google rating dropped", negative_review: "New low-star review" } as const;
+
 function Change({ label, before, after, format }: { label: string; before: number | null | undefined; after: number | null | undefined; format: (n: number | null | undefined) => string }) {
   return (
     <div className="whitespace-nowrap tabular-nums">
@@ -32,6 +34,16 @@ function Change({ label, before, after, format }: { label: string; before: numbe
 }
 
 function Metrics({ alert }: { alert: AlertListItem }) {
+  if (alert.source === "gbp") {
+    const { rating, reviewCount, negativeReviews } = alert.metrics;
+    return (
+      <>
+        <Change label="Rating" before={rating.before} after={rating.after} format={(n) => fmtNum(n)} />
+        <Change label="Reviews" before={reviewCount.before} after={reviewCount.after} format={(n) => fmtNum(n, 0)} />
+        {negativeReviews && <div className="text-xs">{negativeReviews.count} new low-star {negativeReviews.count === 1 ? "review" : "reviews"}</div>}
+      </>
+    );
+  }
   const { before, after } = alert.metrics;
   if (alert.kind === "data_problem") {
     return <div className="tabular-nums">{after.failedPoints ?? 0} of {after.totalPoints} points failed</div>;
@@ -57,7 +69,7 @@ export function AlertsPage() {
     <>
       <PageHeader
         title="Alerts"
-        description="Raised when a scan finishes noticeably worse than the previous one for the same tracker."
+        description="Raised when a scan finishes noticeably worse than the previous one for the same tracker, or when a tracked Google profile's rating drops or a low-star review arrives."
         actions={<Button variant="outline" disabled={!data?.unreadCount || markAll.isPending} onClick={() => markAll.mutate()}>Mark all read</Button>}
       />
       <ErrorNote error={q.error ?? markRead.error ?? markAll.error} />
@@ -77,16 +89,31 @@ export function AlertsPage() {
                         {!a.readAt && <span className="size-2 rounded-full bg-primary" aria-label="Unread" />}
                         <Badge tone={a.severity === "critical" ? "danger" : "warning"}>{a.severity === "critical" ? "Critical" : "Warning"}</Badge>
                       </div>
-                      <div className="mt-1 text-xs">{a.metrics.reasons.map((r) => REASON_LABEL[r] ?? r).join(", ")}</div>
+                      <div className="mt-1 text-xs">
+                        {a.source === "gbp" ? GBP_KIND_LABEL[a.kind] : a.metrics.reasons.map((r) => REASON_LABEL[r] ?? r).join(", ")}
+                      </div>
                     </Td>
                     <Td>
-                      <Link className="font-medium hover:underline" to={`/trackers/${a.trackerId}`}>{a.businessName}</Link>
-                      <div className="text-xs text-muted-foreground">&ldquo;{a.keyword}&rdquo;</div>
+                      {a.source === "gbp" ? (
+                        <>
+                          <Link className="font-medium hover:underline" to={`/businesses/${a.businessId}`}>{a.businessName}</Link>
+                          <div className="text-xs text-muted-foreground">Google profile</div>
+                        </>
+                      ) : (
+                        <>
+                          <Link className="font-medium hover:underline" to={`/trackers/${a.trackerId}`}>{a.businessName}</Link>
+                          <div className="text-xs text-muted-foreground">&ldquo;{a.keyword}&rdquo;</div>
+                        </>
+                      )}
                     </Td>
                     <Td className="text-sm"><Metrics alert={a} /></Td>
                     <Td className="whitespace-nowrap text-xs">{fmtDateTime(a.createdAt)}</Td>
                     <Td className="whitespace-nowrap text-right">
-                      <Link to={`/scans/${a.scanId}`}><Button size="sm" variant="outline">View scan</Button></Link>
+                      {a.source === "gbp" ? (
+                        <Link to={`/businesses/${a.businessId}`}><Button size="sm" variant="outline">View profile</Button></Link>
+                      ) : (
+                        <Link to={`/scans/${a.scanId}`}><Button size="sm" variant="outline">View scan</Button></Link>
+                      )}
                       {!a.readAt && <Button size="sm" variant="ghost" className="ml-1" disabled={markRead.isPending} onClick={() => markRead.mutate(a.id)}>Mark read</Button>}
                     </Td>
                   </tr>

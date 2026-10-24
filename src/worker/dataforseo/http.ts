@@ -11,9 +11,14 @@ import {
   type ResponseLike,
   type TaskLike,
 } from "./envelope";
-import { firstResultItems, parseMapItems, taskToOutcome } from "./parse";
+import { firstResultItems, parseBusinessProfile, parseMapItems, reviewsTaskToOutcome, taskToOutcome } from "./parse";
 import {
   MAX_TASKS_PER_POST,
+  type BusinessProfileInput,
+  type BusinessProfileResult,
+  type ReviewsOutcome,
+  type ReviewsTaskInput,
+  type ReviewsTaskPosted,
   type DataForSeoProvider,
   type LiveSearchInput,
   type LiveSearchResult,
@@ -93,17 +98,47 @@ export class HttpDataForSeo implements DataForSeoProvider {
     return { items: parseMapItems(firstResultItems(task)), billing: buildTaskBilling(task) };
   }
 
-  async lookupPlace(placeId: string): Promise<PlaceLookupResult | null> {
+  async getBusinessProfile(input: BusinessProfileInput): Promise<BusinessProfileResult> {
+    const { items, billing } = await this.businessInfo(input.placeId, input.languageCode);
+    return { profile: parseBusinessProfile(items), billing };
+  }
+
+  async postReviewsTask(input: ReviewsTaskInput): Promise<ReviewsTaskPosted> {
+    const response = await this.request<TaskLike>(
+      "POST",
+      "/v3/business_data/google/reviews/task_post",
+      [{ keyword: `place_id:${input.placeId}`, location_code: 2840, language_code: input.languageCode ?? "en", depth: input.depth, sort_by: "newest" }],
+      { maxServerErrorRetries: 0 },
+    );
+    const task = assertOk(response, { okTaskStatusCode: 20100 });
+    if (!task.id) throw new AppError("INTERNAL_ERROR", "DataForSEO reviews task_post returned no task id");
+    return { taskId: task.id, billing: buildTaskBilling(task) };
+  }
+
+  async getReviewsTask(taskId: string): Promise<ReviewsOutcome> {
+    const response = await this.request<TaskLike>("GET", `/v3/business_data/google/reviews/task_get/${encodeURIComponent(taskId)}`);
+    const task = response?.tasks?.[0];
+    if (!response || response.status_code !== 20000 || !task) {
+      throw failedResponseError(response, "DataForSEO reviews task_get failed");
+    }
+    return reviewsTaskToOutcome(task);
+  }
+
+  /** The one `my_business_info` call, shared by lookupPlace and getBusinessProfile. */
+  private async businessInfo(placeId: string, languageCode = "en") {
     const response = await this.request<TaskLike>(
       "POST",
       "/v3/business_data/google/my_business_info/live",
       // location is required by the endpoint; a place_id resolves regardless.
-      [{ keyword: `place_id:${placeId}`, location_code: 2840, language_code: "en" }],
+      [{ keyword: `place_id:${placeId}`, location_code: 2840, language_code: languageCode }],
       { maxServerErrorRetries: 0 },
     );
     const task = assertOk(response, { treatNoResultsAsEmpty: true });
-    const billing = buildTaskBilling(task);
-    const items = firstResultItems(task);
+    return { items: firstResultItems(task), billing: buildTaskBilling(task) };
+  }
+
+  async lookupPlace(placeId: string): Promise<PlaceLookupResult | null> {
+    const { items, billing } = await this.businessInfo(placeId);
     const item = (Array.isArray(items) ? items[0] : undefined) as Record<string, unknown> | undefined;
     const lat = Number(item?.latitude);
     const lng = Number(item?.longitude);

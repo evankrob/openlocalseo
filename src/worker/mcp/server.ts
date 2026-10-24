@@ -9,6 +9,7 @@ import { z } from "zod";
 import { AppError } from "@/shared/errors";
 import { listAlerts } from "../alerts";
 import type { AuthContext } from "../auth/accounts";
+import { getGbpOverview, listReviews } from "../gbp/queries";
 import { createScan } from "../scans/service";
 import { getScanDetail, listTrackerSummaries, listWorkspaceScans } from "../scans/queries";
 import type { ProcessDeps } from "../scans/process";
@@ -52,6 +53,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       const trackers = await listTrackerSummaries(deps.db, ws);
       const rows = trackers.map((t) => ({
         trackerId: t.id,
+        businessId: t.business.id,
         business: t.business.name,
         keyword: t.keyword,
         grid: `${t.gridSize}x${t.gridSize}`,
@@ -188,28 +190,82 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
     },
     guard(async (args: { unreadOnly: boolean; limit: number }) => {
       const { alerts: all, unreadCount } = await listAlerts(deps.db, ws, { limit: args.unreadOnly ? 200 : args.limit });
-      const rows = (args.unreadOnly ? all.filter((a) => a.readAt === null) : all).slice(0, args.limit).map((a) => ({
-        alertId: a.id,
-        kind: a.kind,
-        severity: a.severity,
-        trackerId: a.trackerId,
-        business: a.businessName,
-        keyword: a.keyword,
-        scanId: a.scanId,
-        reasons: a.metrics.reasons,
-        before: a.metrics.before,
-        after: a.metrics.after,
-        createdAt: a.createdAt,
-        read: a.readAt !== null,
-        url: `${baseUrl}/scans/${a.scanId}`,
-      }));
+      const rows = (args.unreadOnly ? all.filter((a) => a.readAt === null) : all).slice(0, args.limit).map((a) => {
+        const common = { alertId: a.id, kind: a.kind, severity: a.severity, business: a.businessName, createdAt: a.createdAt, read: a.readAt !== null };
+        const line = `${common.read ? "  " : "* "}${a.severity} ${a.kind} ${a.businessName}`;
+        if (a.source === "gbp") {
+          const { rating, reviewCount, negativeReviews } = a.metrics;
+          return {
+            row: { ...common, businessId: a.businessId, snapshotId: a.snapshotId, rating, reviewCount, negativeReviews: negativeReviews ?? null, url: `${baseUrl}/businesses` },
+            text: `${line}: rating ${rating.before ?? "-"} -> ${rating.after ?? "-"}${negativeReviews ? `, ${negativeReviews.count} new low review(s)` : ""}`,
+          };
+        }
+        return {
+          row: {
+            ...common,
+            trackerId: a.trackerId,
+            keyword: a.keyword,
+            scanId: a.scanId,
+            reasons: a.metrics.reasons,
+            before: a.metrics.before,
+            after: a.metrics.after,
+            url: `${baseUrl}/scans/${a.scanId}`,
+          },
+          text: `${line} / "${a.keyword}": ATRP ${a.metrics.before?.atrp ?? "-"} -> ${a.metrics.after.atrp ?? "-"}, SoLV ${a.metrics.before?.solv ?? "-"} -> ${a.metrics.after.solv ?? "-"}%`,
+        };
+      });
+      return ok(rows.length ? rows.map((r) => r.text).join("\n") : "No alerts.", { unreadCount, alerts: rows.map((r) => r.row) });
+    }),
+  );
+
+  server.registerTool(
+    "get_gbp_profile",
+    {
+      title: "Get Google Business Profile",
+      description:
+        "Latest tracked Google Business Profile snapshot for a business: rating, review count, review velocity (reviews per 30 days), unanswered reviews among the newest 20, claimed status, category, photo count, plus the rating/review-count history. Read-only: snapshots are taken monthly for businesses with tracking turned on, or from the web app.",
+      inputSchema: { businessId: z.string().describe("Business id (list_trackers shows it).") },
+      annotations: { readOnlyHint: true },
+    },
+    guard(async (args: { businessId: string }) => {
+      const overview = await getGbpOverview(deps.db, ws, args.businessId);
+      const l = overview.latest;
       return ok(
-        rows.length
-          ? rows
-              .map((a) => `${a.read ? "  " : "* "}${a.severity} ${a.kind} ${a.business} / "${a.keyword}": ATRP ${a.before?.atrp ?? "-"} -> ${a.after.atrp ?? "-"}, SoLV ${a.before?.solv ?? "-"} -> ${a.after.solv ?? "-"}%`)
+        l
+          ? `${overview.business.name}: ${l.rating ?? "n/a"} stars from ${l.reviewCount ?? "n/a"} reviews, ${l.velocity30d ?? "n/a"} new per 30 days, ${l.unansweredLast20 ?? "n/a"} of the newest 20 unanswered (${l.takenAt}).`
+          : `${overview.business.name}: no profile snapshot yet. Turn on tracking or refresh from the web app.`,
+        { ...overview, url: `${baseUrl}/businesses` },
+      );
+    }),
+  );
+
+  server.registerTool(
+    "list_reviews",
+    {
+      title: "List reviews",
+      description:
+        "Stored Google reviews for a business, newest first, with star rating, date and whether the owner replied. Page with nextCursor. Read-only.",
+      inputSchema: {
+        businessId: z.string(),
+        unansweredOnly: z.boolean().default(false),
+        limit: z.number().int().min(1).max(100).default(20),
+        cursor: z.string().max(200).optional().describe("nextCursor from the previous page."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    guard(async (args: { businessId: string; unansweredOnly: boolean; limit: number; cursor?: string }) => {
+      const page = await listReviews(deps.db, ws, args.businessId, {
+        limit: args.limit,
+        cursor: args.cursor,
+        unansweredOnly: args.unansweredOnly,
+      });
+      return ok(
+        page.reviews.length
+          ? page.reviews
+              .map((r) => `${r.publishedAt.slice(0, 10)} ${r.rating}* ${r.ownerAnswered ? "answered" : "UNANSWERED"} ${r.text?.slice(0, 80) ?? ""}`)
               .join("\n")
-          : "No alerts.",
-        { unreadCount, alerts: rows },
+          : "No reviews stored.",
+        { ...page },
       );
     }),
   );

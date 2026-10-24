@@ -96,7 +96,7 @@ export async function archiveBusiness(db: Db, workspaceId: string, id: string) {
   await getBusiness(db, workspaceId, id);
   const now = new Date().toISOString();
   await db.update(trackers).set({ archivedAt: now, scheduleFrequency: "none", nextRunAt: null }).where(and(eq(trackers.businessId, id), eq(trackers.workspaceId, workspaceId)));
-  await db.update(businesses).set({ archivedAt: now }).where(and(eq(businesses.id, id), eq(businesses.workspaceId, workspaceId)));
+  await db.update(businesses).set({ archivedAt: now, gbpTracking: false, gbpNextRunAt: null }).where(and(eq(businesses.id, id), eq(businesses.workspaceId, workspaceId)));
 }
 
 export async function getTracker(db: Db, workspaceId: string, id: string) {

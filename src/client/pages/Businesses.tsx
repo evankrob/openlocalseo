@@ -106,10 +106,11 @@ export function Businesses() {
             <tbody>
               {list.data?.map((b) => (
                 <tr key={b.id}>
-                  <Td><div className="font-medium">{b.name}</div><div className="text-xs text-muted-foreground">{b.address}</div></Td>
+                  <Td><Link to={`/businesses/${b.id}`} className="font-medium hover:underline">{b.name}</Link><div className="text-xs text-muted-foreground">{b.address}</div></Td>
                   <Td className="text-xs">{b.placeId ? "Place ID" : b.domain ? `Domain: ${b.domain}` : "Name"}</Td>
                   <Td className="text-xs tabular-nums">{b.lat.toFixed(4)}, {b.lng.toFixed(4)}</Td>
                   <Td className="space-x-2 text-right">
+                    <Link to={`/businesses/${b.id}`}><Button size="sm" variant="outline">Profile &amp; reviews</Button></Link>
                     <Link to={`/trackers/new?business=${b.id}`}><Button size="sm" variant="outline">New grid</Button></Link>
                     <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Remove ${b.name} and its trackers? Scan history is kept but hidden.`)) remove.mutate(b.id); }}>Remove</Button>
                   </Td>

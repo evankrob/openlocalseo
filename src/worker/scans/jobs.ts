@@ -4,7 +4,13 @@ export type ScanJob =
   /** Collect queued tasks for some points; re-enqueues itself while any are pending. */
   | { type: "collect"; scanId: string; pointIds: string[] }
   /** Run live searches for some points. */
-  | { type: "live"; scanId: string; pointIds: string[] };
+  | { type: "live"; scanId: string; pointIds: string[] }
+  /** Google Business Profile snapshot: profile call, then the reviews task_post. */
+  | { type: "gbp_snapshot"; snapshotId: string }
+  /** Collect the snapshot's reviews task; re-enqueues itself with backoff while pending. */
+  | { type: "gbp_reviews_collect"; snapshotId: string; attempt: number };
+
+export type GbpJob = Extract<ScanJob, { type: "gbp_snapshot" | "gbp_reviews_collect" }>;
 
 /** The slice of a Cloudflare Queue the scan engine uses; tests swap in a fake. */
 export interface ScanQueue {

@@ -20,22 +20,22 @@ export type MapResult = {
 /** Cost DataForSEO reported for a call: the envelope's `path` and `cost`. */
 export type CallBilling = { path: string[]; costUsd: number };
 
-/**
- * Hints used only by the mock provider, so a business added in the UI shows up
- * in simulated results. The live provider ignores them.
- */
-export type MockHints = {
-  target?: {
-    name: string;
-    placeId: string | null;
-    domain: string | null;
-    category?: string | null;
-    lat: number;
-    lng: number;
-    /** 0-1 strength of the tracked business in the simulated market. */
-    prominence?: number;
-  };
+/** The business a provider call is made on behalf of (see `ProcessDeps.scopeProvider`). */
+export type ProviderScope = {
+  name: string;
+  placeId: string | null;
+  domain: string | null;
+  category: string | null;
+  lat: number;
+  lng: number;
 };
+
+declare const spendBrand: unique symbol;
+/**
+ * Proof that the decision to spend was made: hosted mode holds credits first,
+ * BYOK mode spends the user's own key. Minted only in `billing/spend.ts`.
+ */
+export type SpendAuthorization = { readonly [spendBrand]: true };
 
 type SearchBase = {
   keyword: string;
@@ -43,7 +43,6 @@ type SearchBase = {
   languageCode: string;
   device: Device;
   depth: number;
-  mockHints?: MockHints;
 };
 
 export type PostTasksInput = SearchBase & {
@@ -75,24 +74,29 @@ export type LiveSearchResult = { items: MapResult[]; billing: CallBilling };
  */
 export interface DataForSeoProvider {
   readonly mode: "mock" | "live";
-  /** Submit one task per coordinate (up to 100 per call). Billed at post time. */
-  postTasks(input: PostTasksInput): Promise<PostTasksResult>;
   /** Collect a queued task. Free: the task was billed when posted. */
   getTask(searchType: SearchType, taskId: string): Promise<TaskOutcome>;
-  /** Single synchronous search at the live price. */
-  liveSearch(input: LiveSearchInput): Promise<LiveSearchResult>;
   /** Google business details for a place ID (one cheap live call); null if unknown. */
   lookupPlace?(placeId: string): Promise<PlaceLookupResult | null>;
+  /** Collect a reviews task. Free: it was billed when posted. */
+  getReviewsTask(taskId: string): Promise<ReviewsOutcome>;
+  /** The calls that spend money. Only reachable with a `SpendAuthorization`. */
+  billed(authorization: SpendAuthorization): BilledProvider;
+}
+
+/** Every call that DataForSEO bills at request time. */
+export interface BilledProvider {
+  /** Submit one task per coordinate (up to 100 per call). Billed at post time. */
+  postTasks(input: PostTasksInput): Promise<PostTasksResult>;
+  /** Single synchronous search at the live price. */
+  liveSearch(input: LiveSearchInput): Promise<LiveSearchResult>;
   /** Google Business Profile details for a place ID (one live call); profile is null if Google has none (still billed). */
   getBusinessProfile(input: BusinessProfileInput): Promise<BusinessProfileResult>;
   /** Submit a reviews task. Billed at post time, so never replayed after an error. */
   postReviewsTask(input: ReviewsTaskInput): Promise<ReviewsTaskPosted>;
-  /** Collect a reviews task. Free: it was billed when posted. */
-  getReviewsTask(taskId: string): Promise<ReviewsOutcome>;
 }
 
-/** The mock needs a hint of who the business is; the live provider ignores it. */
-export type BusinessProfileInput = { placeId: string; languageCode?: string; mockHints?: MockHints };
+export type BusinessProfileInput = { placeId: string; languageCode?: string };
 
 export type BusinessProfile = {
   placeId: string | null;
@@ -113,7 +117,7 @@ export type BusinessProfile = {
 
 export type BusinessProfileResult = { profile: BusinessProfile | null; billing: CallBilling };
 
-export type ReviewsTaskInput = { placeId: string; languageCode?: string; depth: number; mockHints?: MockHints };
+export type ReviewsTaskInput = { placeId: string; languageCode?: string; depth: number };
 
 export type ReviewsTaskPosted = { taskId: string; billing: CallBilling };
 

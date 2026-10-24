@@ -93,6 +93,23 @@ export function buildGrid(input: GridInput): GridPoint[] {
   return points;
 }
 
+/** A size x size matrix (rows north to south, columns west to east) filled with `value`. */
+export function emptyGrid<T>(size: number, value: T): T[][] {
+  return Array.from({ length: size }, () => Array<T>(size).fill(value));
+}
+
+/** Writes one cell; throws on out-of-range coordinates instead of silently dropping the write. */
+export function setCell<T>(grid: T[][], row: number, col: number, value: T): void {
+  const line = grid[row];
+  if (!line || col < 0 || col >= line.length) throw new Error(`Grid cell (${row}, ${col}) is out of range`);
+  line[col] = value;
+}
+
+/** Reads one cell; `undefined` when the coordinates are outside the grid. */
+export function cellAt<T>(grid: readonly (readonly T[])[], row: number, col: number): T | undefined {
+  return grid[row]?.[col];
+}
+
 /** DataForSEO `location_coordinate`: "latitude,longitude,zoom" with a z suffix. */
 export function formatLocationCoordinate(
   point: { lat: number; lng: number },

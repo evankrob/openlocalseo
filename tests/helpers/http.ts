@@ -1,5 +1,6 @@
 import { createApp, type AppOptions } from "@/worker/app";
 import type { Env } from "@/worker/env";
+import { at } from "@/shared/assert";
 import type { Harness } from "./harness";
 
 export const origin = "http://localhost:5173";
@@ -20,7 +21,7 @@ export function client(h: Harness, env: Partial<Env> = {}, defaults: Record<stri
       env as Env,
     );
     const set = res.headers.get("set-cookie");
-    if (set) cookie = set.split(";")[0];
+    if (set) cookie = at(set.split(";"), 0);
     const text = await res.text();
     return { status: res.status, json: text ? JSON.parse(text) : null, headers: res.headers };
   };

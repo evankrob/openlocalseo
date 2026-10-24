@@ -34,13 +34,14 @@ export async function failJob(deps: ProcessDeps, job: ScanJob, reason: string): 
     .set({ status: "failed", error: reason, completedAt: nowIso(deps.now?.()) })
     .where(and(eq(scans.id, scan.id), inArray(scans.status, [...ACTIVE])))
     .returning({ costUsd: scans.costUsd });
-  if (won.length === 0) return false;
+  const [winner] = won;
+  if (!winner) return false;
   await deps.db
     .update(scanPoints)
     .set({ status: "failed", error: reason })
     .where(and(eq(scanPoints.scanId, scan.id), inArray(scanPoints.status, ["pending", "posted"])));
   // Settles on the real cost: nothing spent = the whole hold comes back.
-  await settleCredits(deps, scan, won[0].costUsd);
+  await settleCredits(deps, scan, winner.costUsd);
   await createJobFailedAlertSafely(deps, { type: "scan", scanId: scan.id }, reason);
   return true;
 }

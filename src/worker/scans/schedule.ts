@@ -2,6 +2,7 @@
 // tracker with schedule_frequency=monthly carries its own next_run_at.
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { AppError } from "@/shared/errors";
+import { asTrackerId, asWorkspaceId } from "@/shared/ids";
 import { scans, trackers } from "../db/schema";
 import { newId } from "../lib";
 import { reapStaleScans, type ProcessDeps } from "./process";
@@ -46,7 +47,7 @@ export async function runDueSchedules(deps: ProcessDeps): Promise<ScheduleRunSum
     if (advanced.length === 0) continue;
 
     try {
-      await createScan(deps, tracker.workspaceId, tracker.id, { trigger: "schedule" });
+      await createScan(deps, asWorkspaceId(tracker.workspaceId), asTrackerId(tracker.id), { trigger: "schedule" });
       started++;
     } catch (error) {
       failed++;

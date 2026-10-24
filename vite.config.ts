@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
       test: {
         environment: "node",
         include: ["src/**/*.test.ts", "tests/**/*.test.ts", "scripts/**/*.test.ts"],
+        // Playwright specs are *.spec.ts and run with `npm run test:e2e`.
+        exclude: ["tests/e2e/**", "node_modules/**"],
         restoreMocks: true,
         clearMocks: true,
       },

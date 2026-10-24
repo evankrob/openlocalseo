@@ -1,7 +1,7 @@
 import { AppError } from "@/shared/errors";
 import { HttpDataForSeo } from "./http";
-import { MockDataForSeo } from "./mock";
-import type { DataForSeoProvider } from "./types";
+import { MockDataForSeo, type MockOptions } from "./mock";
+import type { DataForSeoProvider, ProviderScope } from "./types";
 
 export type DataForSeoEnv = {
   DATAFORSEO_MODE?: string;
@@ -24,16 +24,30 @@ export function createDataForSeo(env: DataForSeoEnv): DataForSeoProvider {
     }
     return new HttpDataForSeo(normalizeDataForSeoKey(env.DATAFORSEO_API_KEY));
   }
+  return new MockDataForSeo(mockOptions(env));
+}
+
+/**
+ * Per-business provider for local development: the simulated market is built
+ * around the business being tracked. Undefined in live mode, where every
+ * call goes through the one real client.
+ */
+export function createScopedDataForSeo(env: DataForSeoEnv): ((scope: ProviderScope) => DataForSeoProvider) | undefined {
+  if (env.DATAFORSEO_MODE === "live") return undefined;
+  return (scope) => new MockDataForSeo({ ...mockOptions(env), target: scope });
+}
+
+function mockOptions(env: DataForSeoEnv): MockOptions {
   const seconds = (value: string | undefined, fallback: number) => {
     const parsed = Number(value);
     return value && Number.isFinite(parsed) && parsed >= 0 ? parsed * 1000 : fallback;
   };
-  return new MockDataForSeo({
+  return {
     delaysMs: {
       standard: seconds(env.MOCK_STANDARD_DELAY_SECONDS, 12_000),
       priority: seconds(env.MOCK_PRIORITY_DELAY_SECONDS, 4_000),
     },
-  });
+  };
 }
 
 export type { DataForSeoProvider } from "./types";

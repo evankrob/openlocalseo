@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { first } from "@/shared/assert";
 import { creditsToUsd } from "@/shared/pricing";
 import type { Db } from "../db";
 import { apiCalls, creditLedger, scans } from "../db/schema";
@@ -7,22 +8,23 @@ import { getBalance } from "./credits";
 /** Cost tracking summary for the Usage page: provider spend, scans, balance. */
 export async function getUsageSummary(db: Db, workspaceId: string, billingMode: "byok" | "hosted", now = new Date()) {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const [month] = await db
+  // Aggregate selects (no GROUP BY) always return exactly one row.
+  const month = first(await db
     .select({
       calls: sql<number>`count(*)`,
       tasks: sql<number>`coalesce(sum(${apiCalls.taskCount}), 0)`,
       costUsd: sql<number>`coalesce(sum(${apiCalls.costUsd}), 0)`,
     })
     .from(apiCalls)
-    .where(and(eq(apiCalls.workspaceId, workspaceId), eq(apiCalls.mode, "live"), gte(apiCalls.createdAt, monthStart)));
-  const [mock] = await db
+    .where(and(eq(apiCalls.workspaceId, workspaceId), eq(apiCalls.mode, "live"), gte(apiCalls.createdAt, monthStart))), "usage month totals");
+  const mock = first(await db
     .select({ costUsd: sql<number>`coalesce(sum(${apiCalls.costUsd}), 0)` })
     .from(apiCalls)
-    .where(and(eq(apiCalls.workspaceId, workspaceId), eq(apiCalls.mode, "mock"), gte(apiCalls.createdAt, monthStart)));
-  const [scanCount] = await db
+    .where(and(eq(apiCalls.workspaceId, workspaceId), eq(apiCalls.mode, "mock"), gte(apiCalls.createdAt, monthStart))), "usage mock totals");
+  const scanCount = first(await db
     .select({ n: sql<number>`count(*)` })
     .from(scans)
-    .where(and(eq(scans.workspaceId, workspaceId), gte(scans.createdAt, monthStart)));
+    .where(and(eq(scans.workspaceId, workspaceId), gte(scans.createdAt, monthStart))), "usage scan count");
 
   const recentCalls = await db
     .select({

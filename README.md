@@ -214,6 +214,14 @@ Two backends sit behind one interface (`src/worker/ratelimit/`). The per-minute 
 
 Admins see failed scans and snapshots of the last 30 days, with error and cost, under **Settings -> Failed jobs** (`GET /api/ops/failed-jobs`). **Retry** (`POST /api/scans/:id/retry`, failed scans only) starts a new scan for the same tracker with a fresh quote and credit hold; `maxCostUsd` is optional as for any scan.
 
+## Testing
+
+- `npm run check`: typecheck, lint and the unit/API tests (vitest, SQLite with the real migrations). CI runs it, plus `npx vite build`.
+- `npm run test:e2e`: Playwright smoke tests (`tests/e2e/`). They start their own `vite dev` server on port 5199 with the mock DataForSEO provider and `local_noauth`, so no network or secrets are needed. First time: `npx playwright install chromium`. They add uniquely named records to your local D1 state and leave the rest alone. `E2E_SERVER_LOGS=1` shows the server output.
+- Structural tests in `tests/` guard the code itself: route ordering and auth guards (`routes.test.ts`), raw SQL allow-list (`raw-sql.test.ts`), `fetch` allow-list (`no-fetch.test.ts`), spend authorization (`spend.test.ts`).
+
+TODO (needs a funded DataForSEO key): a manually triggered contract test that runs one real 3x3 scan and checks the response shapes against the recorded fixtures. Deliberately not added; nothing in CI or the test suites spends real money.
+
 ## Mocked vs real
 
 | Mocked by default | Real |

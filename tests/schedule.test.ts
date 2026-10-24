@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { scans, trackers } from "@/worker/db/schema";
 import { nextMonthlyRun, runDueSchedules } from "@/worker/scans/schedule";
 import { createHarness, seedTracker, seedWorkspace, type Harness } from "./helpers/harness";
+import { at, first } from "@/shared/assert";
 
 describe("nextMonthlyRun", () => {
   it("returns the next occurrence of the day strictly after now", () => {
@@ -35,17 +36,17 @@ describe("runDueSchedules (the Cron tick)", () => {
 
     const dueScans = await h.db.select().from(scans).where(eq(scans.trackerId, due.trackerId));
     expect(dueScans).toHaveLength(1);
-    expect(dueScans[0].trigger).toBe("schedule");
+    expect(at(dueScans, 0).trigger).toBe("schedule");
     expect(await h.db.select().from(scans).where(eq(scans.trackerId, later.trackerId))).toHaveLength(0);
     expect(await h.db.select().from(scans).where(eq(scans.trackerId, off.trackerId))).toHaveLength(0);
 
-    const [row] = await h.db.select().from(trackers).where(eq(trackers.id, due.trackerId));
+    const row = first(await h.db.select().from(trackers).where(eq(trackers.id, due.trackerId)), "the due tracker row");
     expect(row.nextRunAt).toBe("2026-11-14T00:00:00.000Z");
 
     // a second tick the same day does nothing
     expect(await runDueSchedules(h.deps)).toMatchObject({ started: 0 });
     await h.queue.drain(h.deps);
-    expect((await h.db.select().from(scans).where(eq(scans.trackerId, due.trackerId)))[0].status).toBe("completed");
+    expect(at(await h.db.select().from(scans).where(eq(scans.trackerId, due.trackerId)), 0).status).toBe("completed");
   });
 
   it("records a visible failed scan when a scheduled run cannot start (no credits)", async () => {
@@ -53,10 +54,10 @@ describe("runDueSchedules (the Cron tick)", () => {
     const ws = await seedWorkspace(h.db, 0);
     const t = await seedTracker(h.db, ws, monthly("2026-10-14T00:00:00.000Z"));
     expect(await runDueSchedules(h.deps)).toMatchObject({ started: 0, failed: 1 });
-    const [scan] = await h.db.select().from(scans).where(eq(scans.trackerId, t.trackerId));
+    const scan = first(await h.db.select().from(scans).where(eq(scans.trackerId, t.trackerId)), "the failed scan row");
     expect(scan).toMatchObject({ status: "failed", trigger: "schedule" });
     expect(scan.error).toContain("INSUFFICIENT_CREDITS");
-    const [row] = await h.db.select().from(trackers).where(eq(trackers.id, t.trackerId));
+    const row = first(await h.db.select().from(trackers).where(eq(trackers.id, t.trackerId)), "the tracker row");
     expect(row.nextRunAt).toBe("2026-11-14T00:00:00.000Z"); // still moves on to next month
   });
 

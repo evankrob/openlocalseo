@@ -4,6 +4,7 @@ import type { Geocoder } from "./geocode";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { toKm, validateGridInput } from "@/shared/grid";
 import { AppError } from "@/shared/errors";
+import { asBusinessId, asTrackerId, type BusinessId, type TrackerId, type WorkspaceId } from "@/shared/ids";
 import type { BusinessInput, TrackerInput, TrackerPatch } from "@/shared/schemas";
 import type { Db } from "./db";
 import { businesses, trackers } from "./db/schema";
@@ -13,7 +14,7 @@ import { nextMonthlyRun } from "./scans/schedule";
 const cleanDomain = (d?: string | null) =>
   d ? d.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") || null : null;
 
-export async function listBusinesses(db: Db, workspaceId: string) {
+export async function listBusinesses(db: Db, workspaceId: WorkspaceId) {
   return db
     .select()
     .from(businesses)
@@ -21,7 +22,7 @@ export async function listBusinesses(db: Db, workspaceId: string) {
     .orderBy(desc(businesses.createdAt));
 }
 
-export async function getBusiness(db: Db, workspaceId: string, id: string) {
+export async function getBusiness(db: Db, workspaceId: WorkspaceId, id: BusinessId) {
   const [row] = await db
     .select()
     .from(businesses)
@@ -75,8 +76,8 @@ export async function resolveBusinessInput(
   );
 }
 
-export async function createBusiness(db: Db, workspaceId: string, input: BusinessInput & { lat: number; lng: number }) {
-  const id = newId();
+export async function createBusiness(db: Db, workspaceId: WorkspaceId, input: BusinessInput & { lat: number; lng: number }) {
+  const id = asBusinessId(newId());
   await db.insert(businesses).values({
     id,
     workspaceId,
@@ -92,14 +93,14 @@ export async function createBusiness(db: Db, workspaceId: string, input: Busines
   return getBusiness(db, workspaceId, id);
 }
 
-export async function archiveBusiness(db: Db, workspaceId: string, id: string) {
+export async function archiveBusiness(db: Db, workspaceId: WorkspaceId, id: BusinessId) {
   await getBusiness(db, workspaceId, id);
   const now = new Date().toISOString();
   await db.update(trackers).set({ archivedAt: now, scheduleFrequency: "none", nextRunAt: null }).where(and(eq(trackers.businessId, id), eq(trackers.workspaceId, workspaceId)));
   await db.update(businesses).set({ archivedAt: now, gbpTracking: false, gbpNextRunAt: null }).where(and(eq(businesses.id, id), eq(businesses.workspaceId, workspaceId)));
 }
 
-export async function getTracker(db: Db, workspaceId: string, id: string) {
+export async function getTracker(db: Db, workspaceId: WorkspaceId, id: TrackerId) {
   const [row] = await db
     .select()
     .from(trackers)
@@ -108,9 +109,9 @@ export async function getTracker(db: Db, workspaceId: string, id: string) {
   return row;
 }
 
-export async function createTracker(db: Db, workspaceId: string, input: TrackerInput, now = new Date()) {
-  const business = await getBusiness(db, workspaceId, input.businessId);
-  const id = newId();
+export async function createTracker(db: Db, workspaceId: WorkspaceId, input: TrackerInput, now = new Date()) {
+  const business = await getBusiness(db, workspaceId, asBusinessId(input.businessId));
+  const id = asTrackerId(newId());
   await db.insert(trackers).values({
     id,
     workspaceId,
@@ -139,7 +140,7 @@ export async function createTracker(db: Db, workspaceId: string, input: TrackerI
  * with. Changing grid, zoom or search type breaks comparability with earlier
  * scans, which the UI warns about.
  */
-export async function updateTracker(db: Db, workspaceId: string, id: string, patch: TrackerPatch, now = new Date()) {
+export async function updateTracker(db: Db, workspaceId: WorkspaceId, id: TrackerId, patch: TrackerPatch, now = new Date()) {
   const current = await getTracker(db, workspaceId, id);
   const set: Partial<typeof trackers.$inferInsert> = {};
   if (patch.keyword !== undefined) set.keyword = patch.keyword;
@@ -173,7 +174,7 @@ export async function updateTracker(db: Db, workspaceId: string, id: string, pat
   return getTracker(db, workspaceId, id);
 }
 
-export async function archiveTracker(db: Db, workspaceId: string, id: string) {
+export async function archiveTracker(db: Db, workspaceId: WorkspaceId, id: TrackerId) {
   await getTracker(db, workspaceId, id);
   await db
     .update(trackers)

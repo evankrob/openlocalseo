@@ -2,13 +2,14 @@
 // job), the opt-in monthly schedule and the tracking toggle.
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { AppError } from "@/shared/errors";
+import { asBusinessId, asWorkspaceId, type BusinessId, type WorkspaceId } from "@/shared/ids";
 import {
   GBP_REVIEWS_DEPTH,
   applyMarkupUsd,
   creditsForProviderUsd,
   estimateGbpSnapshotCostUsd,
 } from "@/shared/pricing";
-import { holdCredits } from "../billing/credits";
+import { withCreditHold } from "../billing/spend";
 import { getBusiness } from "../catalog";
 import type { AppConfig } from "../config";
 import { businesses, gbpSnapshots } from "../db/schema";
@@ -49,8 +50,8 @@ export const GBP_SCHEDULE_DAY = 1;
 /** Creates a snapshot for a business, holds credits (hosted) and queues it. */
 export async function createGbpSnapshot(
   deps: ProcessDeps,
-  workspaceId: string,
-  businessId: string,
+  workspaceId: WorkspaceId,
+  businessId: BusinessId,
   options: CreateGbpSnapshotOptions,
 ): Promise<{ snapshotId: string; quote: GbpQuote }> {
   const { db, queue, config } = deps;
@@ -85,20 +86,28 @@ export async function createGbpSnapshot(
     throw error;
   }
 
+  let held = false;
   try {
-    if (config.billingMode === "hosted") await holdCredits(db, workspaceId, quote.credits, snapshotId, "gbp");
+    await withCreditHold(
+      db,
+      workspaceId,
+      { billingMode: config.billingMode, credits: quote.credits, scope: "gbp", refId: snapshotId },
+      async () => {
+        held = true;
+        await queue.send({ type: "gbp_snapshot", snapshotId });
+      },
+    );
   } catch (error) {
-    // Nothing was charged or queued yet: remove the half-created snapshot.
-    await db.delete(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId));
+    // Nothing was charged yet (the hold failed): remove the half-created snapshot.
+    // Once the credits are held the row stays so the failure path can refund them.
+    if (!held) await db.delete(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId));
     throw error;
   }
-
-  await queue.send({ type: "gbp_snapshot", snapshotId });
   return { snapshotId, quote };
 }
 
 /** Turns monthly tracking on or off. Enabling schedules the next run for the 1st; it does not spend anything now. */
-export async function setGbpTracking(db: ProcessDeps["db"], workspaceId: string, businessId: string, enabled: boolean, now = new Date()) {
+export async function setGbpTracking(db: ProcessDeps["db"], workspaceId: WorkspaceId, businessId: BusinessId, enabled: boolean, now = new Date()) {
   const business = await getBusiness(db, workspaceId, businessId);
   if (enabled && !business.placeId) {
     throw new AppError("VALIDATION_ERROR", "Profile tracking needs the business's Google place ID.");
@@ -143,7 +152,7 @@ export async function runDueGbpSnapshots(deps: ProcessDeps): Promise<GbpSchedule
     if (advanced.length === 0) continue;
 
     try {
-      await createGbpSnapshot(deps, business.workspaceId, business.id, { trigger: "schedule" });
+      await createGbpSnapshot(deps, asWorkspaceId(business.workspaceId), asBusinessId(business.id), { trigger: "schedule" });
       started++;
     } catch (error) {
       failed++;

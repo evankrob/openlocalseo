@@ -6,7 +6,10 @@ import { reapStaleScans } from "@/worker/scans/process";
 import { computeMetrics } from "@/shared/metrics";
 import { getBalance, grantCredits } from "@/worker/billing/credits";
 import { MockDataForSeo } from "@/worker/dataforseo/mock";
-import type { DataForSeoProvider } from "@/worker/dataforseo/types";
+import type { DataForSeoProvider, ProviderScope } from "@/worker/dataforseo/types";
+import { wrapProvider } from "./helpers/gbp";
+import { at, first } from "@/shared/assert";
+import { asWorkspaceId } from "@/shared/ids";
 import { createHarness, getScan, seedTracker, seedWorkspace, type Harness } from "./helpers/harness";
 
 let h: Harness;
@@ -101,7 +104,7 @@ describe("scan pipeline (standard queue, mock provider)", () => {
     const ws = await seedWorkspace(h.db);
     await seedWorkspace(h.db, 0, "ws-2");
     const { trackerId } = await seedTracker(h.db, ws);
-    await expect(createScan(h.deps, "ws-2", trackerId, { trigger: "manual" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(createScan(h.deps, asWorkspaceId("ws-2"), trackerId, { trigger: "manual" })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("refuses to start above the approved cost ceiling", async () => {
@@ -144,7 +147,7 @@ describe("queue modes", () => {
     const { trackerId } = await seedTracker(h.db, ws, { searchType: "local_finder" });
     const { scanId } = await createScan(h.deps, ws, trackerId, { trigger: "manual" });
     await h.queue.drain(h.deps);
-    const [call] = await h.db.select().from(apiCalls).where(eq(apiCalls.scanId, scanId));
+    const call = first(await h.db.select().from(apiCalls).where(eq(apiCalls.scanId, scanId)), "the api call row");
     expect(call.path).toBe("v3/serp/google/local_finder/task_post");
   });
 });
@@ -167,18 +170,10 @@ describe("failure handling", () => {
   });
 
   it("fails the scan and refunds the hold when the post step errors", async () => {
-    const broken = (clock: { now: number }): DataForSeoProvider => {
-      const inner = new MockDataForSeo({ now: () => clock.now });
-      return {
-        mode: "mock",
-        getTask: inner.getTask.bind(inner),
-        liveSearch: inner.liveSearch.bind(inner),
-        getBusinessProfile: inner.getBusinessProfile.bind(inner),
-        postReviewsTask: inner.postReviewsTask.bind(inner),
-        getReviewsTask: inner.getReviewsTask.bind(inner),
+    const broken = (clock: { now: number }, target?: ProviderScope): DataForSeoProvider =>
+      wrapProvider(new MockDataForSeo({ now: () => clock.now, target }), {
         postTasks: async () => { throw new Error("DataForSEO HTTP 401"); },
-      };
-    };
+      });
     h = await createHarness({ env: { BILLING_MODE: "hosted" }, provider: broken });
     const ws = await seedWorkspace(h.db, 500);
     const { trackerId } = await seedTracker(h.db, ws);
@@ -274,7 +269,7 @@ describe("hosted credits", () => {
   it("grants credits and records them in the ledger", async () => {
     const ws = await seedWorkspace(h.db, 0);
     await grantCredits(h.db, ws, 250, "topup");
-    const [row] = await h.db.select().from(workspaces).where(eq(workspaces.id, ws));
+    const row = first(await h.db.select().from(workspaces).where(eq(workspaces.id, ws)), "the workspace row");
     expect(row.creditBalance).toBe(250);
   });
 });
@@ -299,7 +294,9 @@ describe("other listings note", () => {
     const { trackerId } = await seedTracker(h.db, ws);
     const { scanId } = await createScan(h.deps, ws, trackerId, { trigger: "manual" });
     await h.queue.drain(h.deps);
-    const [p1, p2] = await h.db.select().from(scanPoints).where(eq(scanPoints.scanId, scanId)).limit(2);
+    const twoPoints = await h.db.select().from(scanPoints).where(eq(scanPoints.scanId, scanId)).limit(2);
+    const p1 = at(twoPoints, 0);
+    const p2 = at(twoPoints, 1);
     const row = (pointId: string, rank: number) => ({ id: `x-${pointId}`, scanId, pointId, rank, businessKey: "ChIJotherListing", name: "Maple & Ember (duplicate)", placeId: "ChIJotherListing", domain: "www.mapleember.example", isTarget: false });
     await h.db.insert(scanResults).values([row(p1.id, 4), row(p2.id, 2)]);
     const detail = await getScanDetail(h.db, scanId, { workspaceId: ws });

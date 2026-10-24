@@ -14,6 +14,7 @@ import {
 import { firstResultItems, parseBusinessProfile, parseMapItems, reviewsTaskToOutcome, taskToOutcome } from "./parse";
 import {
   MAX_TASKS_PER_POST,
+  type BilledProvider,
   type BusinessProfileInput,
   type BusinessProfileResult,
   type ReviewsOutcome,
@@ -26,6 +27,7 @@ import {
   type PostTasksInput,
   type PostTasksResult,
   type SearchType,
+  type SpendAuthorization,
   type TaskOutcome,
 } from "./types";
 
@@ -47,6 +49,11 @@ export class HttpDataForSeo implements DataForSeoProvider {
     private readonly baseUrl: string = API_BASE,
     private readonly fetchImpl: typeof fetch = (...args) => fetch(...args),
   ) {}
+
+  /** The authorization is a compile-time gate (see `billing/spend.ts`); nothing to check at runtime. */
+  billed(_authorization: SpendAuthorization): BilledProvider {
+    return this;
+  }
 
   async postTasks(input: PostTasksInput): Promise<PostTasksResult> {
     if (input.coordinates.length > MAX_TASKS_PER_POST) {
@@ -202,7 +209,7 @@ export class HttpDataForSeo implements DataForSeoProvider {
   }
 }
 
-function searchBody(input: Omit<LiveSearchInput, "coordinate" | "mockHints">, coordinate: string) {
+function searchBody(input: Omit<LiveSearchInput, "coordinate">, coordinate: string) {
   return {
     keyword: input.keyword,
     location_coordinate: coordinate,

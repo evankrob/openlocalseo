@@ -2,6 +2,7 @@
 // series, and the review list.
 import { and, desc, eq, lt, or } from "drizzle-orm";
 import { AppError } from "@/shared/errors";
+import type { BusinessId, WorkspaceId } from "@/shared/ids";
 import { getBusiness } from "../catalog";
 import type { Db } from "../db";
 import { gbpSnapshots, reviews } from "../db/schema";
@@ -64,7 +65,7 @@ function view(row: SnapshotRow): GbpSnapshotView {
 export type GbpSeriesPoint = Pick<GbpSnapshotView, "id" | "takenAt" | "rating" | "reviewCount" | "velocity30d" | "newReviews" | "unansweredLast20">;
 
 /** Latest completed snapshot, the change since the one before it, and the history series (oldest first). */
-export async function getGbpOverview(db: Db, workspaceId: string, businessId: string, historyLimit = 60) {
+export async function getGbpOverview(db: Db, workspaceId: WorkspaceId, businessId: BusinessId, historyLimit = 60) {
   const business = await getBusiness(db, workspaceId, businessId);
   const completed = await db
     .select()
@@ -143,8 +144,8 @@ function decodeCursor(cursor: string): { publishedAt: string; id: string } {
 /** Stored reviews, newest first, with keyset paging. */
 export async function listReviews(
   db: Db,
-  workspaceId: string,
-  businessId: string,
+  workspaceId: WorkspaceId,
+  businessId: BusinessId,
   options: { limit: number; cursor?: string; unansweredOnly?: boolean },
 ): Promise<{ reviews: ReviewView[]; nextCursor: string | null }> {
   await getBusiness(db, workspaceId, businessId);

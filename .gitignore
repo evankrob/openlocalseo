@@ -8,6 +8,8 @@ dist
 *.log
 .logs
 coverage
+test-results
+playwright-report
 
 # build outputs, env, local DBs
 build/

@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import type { JWTVerifyGetKey } from "jose";
 import { AppError } from "@/shared/errors";
+import { asWorkspaceId } from "@/shared/ids";
 import type { AppConfig } from "../config";
 import type { Db } from "../db";
 import type { Env } from "../env";
@@ -68,7 +69,7 @@ export async function authenticate(c: Context, options: AuthOptions): Promise<Au
     }
   }
   const workspace = await resolveWorkspace(db, user.id, c.req.header("x-workspace-id"));
-  return { userId: user.id, email: user.email, workspaceId: workspace.id, role: workspace.role, via: "session" };
+  return { userId: user.id, email: user.email, workspaceId: asWorkspaceId(workspace.id), role: workspace.role, via: "session" };
 }
 
 export function requireRole(auth: AuthContext, minimum: Role) {

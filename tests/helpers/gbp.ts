@@ -2,20 +2,24 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/worker/db";
 import { businesses, gbpSnapshots } from "@/worker/db/schema";
 import { MockDataForSeo } from "@/worker/dataforseo/mock";
-import type { DataForSeoProvider } from "@/worker/dataforseo/types";
+import type { BilledProvider, DataForSeoProvider } from "@/worker/dataforseo/types";
 import { seedTracker } from "./harness";
 
 /** The mock with some methods replaced, to inject failures or extra reviews. */
-export function wrapProvider(inner: MockDataForSeo, overrides: Partial<DataForSeoProvider>): DataForSeoProvider {
+export function wrapProvider(inner: MockDataForSeo, overrides: Partial<DataForSeoProvider & BilledProvider>): DataForSeoProvider {
+  const { postTasks, liveSearch, getBusinessProfile, postReviewsTask, ...free } = overrides;
+  const billed: BilledProvider = {
+    postTasks: postTasks ?? inner.postTasks.bind(inner),
+    liveSearch: liveSearch ?? inner.liveSearch.bind(inner),
+    getBusinessProfile: getBusinessProfile ?? inner.getBusinessProfile.bind(inner),
+    postReviewsTask: postReviewsTask ?? inner.postReviewsTask.bind(inner),
+  };
   return {
     mode: "mock",
     getTask: inner.getTask.bind(inner),
-    liveSearch: inner.liveSearch.bind(inner),
-    postTasks: inner.postTasks.bind(inner),
-    getBusinessProfile: inner.getBusinessProfile.bind(inner),
-    postReviewsTask: inner.postReviewsTask.bind(inner),
     getReviewsTask: inner.getReviewsTask.bind(inner),
-    ...overrides,
+    billed: () => billed,
+    ...free,
   };
 }
 

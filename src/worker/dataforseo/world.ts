@@ -4,7 +4,17 @@
 // inputs always give the same results, so history, tests and screenshots
 // are reproducible.
 import { haversineKm } from "@/shared/grid";
-import type { MockHints } from "./types";
+import type { ProviderScope } from "./types";
+
+/** The tracked business the simulated market is built around. */
+export type MockTarget = Omit<ProviderScope, "category"> & {
+  category?: string | null;
+  /** 0-1 strength of the tracked business in the simulated market. */
+  prominence?: number;
+};
+
+/** What the mock embeds in task ids so a fresh isolate can answer them. */
+export type MockHints = { target?: MockTarget };
 
 export type WorldBusiness = {
   name: string;

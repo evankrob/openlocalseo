@@ -5,10 +5,12 @@ import type { Db } from "@/worker/db";
 import { createAlertsForScan, createAlertsSafely, saveAlertSettings } from "@/worker/alerts";
 import { createScan } from "@/worker/scans/service";
 import { createHarness, getScan, seedTracker, seedWorkspace, type Harness } from "./helpers/harness";
+import { at, first as firstRow } from "@/shared/assert";
+import type { TrackerId, WorkspaceId } from "@/shared/ids";
 
 let h: Harness;
-let ws: string;
-let trackerId: string;
+let ws: WorkspaceId;
+let trackerId: TrackerId;
 let sent: Array<{ url: string; text: string }>;
 
 beforeEach(async () => {
@@ -61,11 +63,11 @@ describe("alerts when a scan is finalized", () => {
       kind: "rank_drop",
       readAt: null,
     });
-    const metrics = JSON.parse(rows[0].metrics);
+    const metrics = JSON.parse(at(rows, 0).metrics);
     expect(metrics.before).toMatchObject({ atrp: 1, solv: 100, foundPoints: 25, centerRank: 1 });
     expect(metrics.after).toMatchObject({ atrp: scan.atrp, solv: scan.solv });
     expect(metrics.reasons).toContain("atrp");
-    expect(["warning", "critical"]).toContain(rows[0].severity);
+    expect(["warning", "critical"]).toContain(at(rows, 0).severity);
   });
 
   it("compares with the latest completed scan, not an older one", async () => {
@@ -108,7 +110,7 @@ describe("alerts when a scan is finalized", () => {
     const rows = await allAlerts();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ kind: "data_problem", severity: "warning", previousScanId: null });
-    expect(JSON.parse(rows[0].metrics).after).toMatchObject({ failedPoints: 15, totalPoints: 25 });
+    expect(JSON.parse(at(rows, 0).metrics).after).toMatchObject({ failedPoints: 15, totalPoints: 25 });
   });
 
   it("is idempotent: evaluating the same scan again (redelivery, re-finalize) adds no duplicate", async () => {
@@ -123,7 +125,7 @@ describe("alerts when a scan is finalized", () => {
   it("the unique index itself refuses a second alert of the same kind for a scan", async () => {
     await makeGreat(await runScan());
     await runScan();
-    const [row] = await allAlerts();
+    const row = firstRow(await allAlerts(), "the first alert");
     await expect(h.db.insert(alerts).values({ ...row, id: "dup" })).rejects.toThrow();
   });
 
@@ -171,10 +173,10 @@ describe("webhook notification", () => {
     const second = await runScan();
     await Promise.resolve();
     expect(sent).toHaveLength(1);
-    expect(sent[0].url).toBe(url);
-    expect(sent[0].text).toContain("Maple & Ember Coffee Roasters");
-    expect(sent[0].text).toContain('"coffee shop"');
-    expect(sent[0].text).toMatch(/ATRP 1 -> \d/);
+    expect(at(sent, 0).url).toBe(url);
+    expect(at(sent, 0).text).toContain("Maple & Ember Coffee Roasters");
+    expect(at(sent, 0).text).toContain('"coffee shop"');
+    expect(at(sent, 0).text).toMatch(/ATRP 1 -> \d/);
     await createAlertsForScan(h.deps, second, 0);
     expect(sent).toHaveLength(1);
   });

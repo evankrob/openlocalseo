@@ -4,12 +4,13 @@
 // 13x13 grid with 20 results per point.
 import { sql } from "drizzle-orm";
 import type { Db } from "../db";
+import { execRaw } from "../db/raw";
 
 export type PointInsert = { id: string; row: number; col: number; lat: number; lng: number };
 
 export async function insertPoints(db: Db, scanId: string, points: PointInsert[]) {
   if (points.length === 0) return;
-  await db.run(sql`
+  await execRaw(db, sql`
     INSERT INTO scan_points (id, scan_id, "row", "col", lat, lng)
     SELECT json_extract(j.value, '$.id'), ${scanId}, json_extract(j.value, '$.row'),
            json_extract(j.value, '$.col'), json_extract(j.value, '$.lat'), json_extract(j.value, '$.lng')
@@ -27,7 +28,7 @@ export type PointUpdate = {
 /** Applies status/task/rank/error per point id in one statement. */
 export async function updatePoints(db: Db, updates: PointUpdate[]) {
   if (updates.length === 0) return;
-  await db.run(sql`
+  await execRaw(db, sql`
     UPDATE scan_points SET
       status = json_extract(j.value, '$.status'),
       task_id = COALESCE(json_extract(j.value, '$.taskId'), scan_points.task_id),
@@ -55,7 +56,7 @@ export type ResultInsert = {
 
 export async function insertResults(db: Db, scanId: string, rows: ResultInsert[]) {
   if (rows.length === 0) return;
-  await db.run(sql`
+  await execRaw(db, sql`
     INSERT INTO scan_results (id, scan_id, point_id, rank, business_key, name, place_id, cid, domain,
                               rating, rating_count, category, address, is_target)
     SELECT json_extract(j.value, '$.id'), ${scanId}, json_extract(j.value, '$.pointId'),

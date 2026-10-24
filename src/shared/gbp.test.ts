@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluateGbpAlerts, parseDfsTimestamp, ratingDrop, reviewVelocity, reviewsQuerySchema } from "./gbp";
 import { estimateGbpReviewsCostUsd, estimateGbpSnapshotCostUsd } from "./pricing";
+import { at } from "@/shared/assert";
 
 const review = (rating: number, publishedAt = "2026-10-10T00:00:00.000Z", reviewId = `r-${rating}-${publishedAt}`) => ({
   reviewId,
@@ -26,16 +27,16 @@ describe("evaluateGbpAlerts", () => {
   });
 
   it("raises rating_drop at exactly 0.2 and not below it", () => {
-    const at = evaluateGbpAlerts({ current: { rating: 4.5, reviewCount: 200 }, previous: prev, newReviews: [] });
-    expect(at).toHaveLength(1);
-    expect(at[0]).toMatchObject({ kind: "rating_drop", severity: "warning" });
-    expect(at[0].metrics).toMatchObject({ rating: { before: 4.7, after: 4.5 }, reviewCount: { before: 197, after: 200 } });
+    const alerts = evaluateGbpAlerts({ current: { rating: 4.5, reviewCount: 200 }, previous: prev, newReviews: [] });
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ kind: "rating_drop", severity: "warning" });
+    expect(at(alerts, 0).metrics).toMatchObject({ rating: { before: 4.7, after: 4.5 }, reviewCount: { before: 197, after: 200 } });
     expect(evaluateGbpAlerts({ current: { rating: 4.6, reviewCount: 200 }, previous: prev, newReviews: [] })).toEqual([]);
     expect(evaluateGbpAlerts({ current: { rating: 4.9, reviewCount: 200 }, previous: prev, newReviews: [] })).toEqual([]);
   });
 
   it("makes a big drop critical", () => {
-    const [alert] = evaluateGbpAlerts({ current: { rating: 4.1, reviewCount: 200 }, previous: prev, newReviews: [] });
+    const alert = at(evaluateGbpAlerts({ current: { rating: 4.1, reviewCount: 200 }, previous: prev, newReviews: [] }), 0);
     expect(alert.severity).toBe("critical");
   });
 
@@ -57,8 +58,8 @@ describe("evaluateGbpAlerts", () => {
       ],
     });
     expect(alerts).toHaveLength(1);
-    expect(alerts[0].kind).toBe("negative_review");
-    const negative = alerts[0].metrics.negativeReviews!;
+    expect(at(alerts, 0).kind).toBe("negative_review");
+    const negative = at(alerts, 0).metrics.negativeReviews!;
     expect(negative.count).toBe(4);
     expect(negative.reviews.map((r) => r.publishedAt)).toEqual(["2026-10-05T00:00:00.000Z", "2026-10-04T00:00:00.000Z", "2026-10-03T00:00:00.000Z"]);
   });

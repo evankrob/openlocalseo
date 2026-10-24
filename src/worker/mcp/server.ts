@@ -7,6 +7,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AppError } from "@/shared/errors";
+import { emptyGrid, setCell } from "@/shared/grid";
+import { asBusinessId, asTrackerId } from "@/shared/ids";
 import { listAlerts } from "../alerts";
 import type { AuthContext } from "../auth/accounts";
 import { getGbpOverview, listReviews } from "../gbp/queries";
@@ -90,7 +92,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
     },
     guard(async (args: { trackerId: string; maxCostUsd: number }) => {
       await throttleScans(deps, ws);
-      const { scanId, quote } = await createScan(deps, ws, args.trackerId, {
+      const { scanId, quote } = await createScan(deps, ws, asTrackerId(args.trackerId), {
         trigger: "mcp",
         maxCostUsd: args.maxCostUsd,
       });
@@ -153,8 +155,8 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
     guard(async (args: { scanId: string; competitors: number }) => {
       const detail = await getScanDetail(deps.db, args.scanId, { workspaceId: ws });
       const size = detail.scan.gridSize;
-      const grid: Array<Array<number | null>> = Array.from({ length: size }, () => Array<number | null>(size).fill(null));
-      for (const p of detail.points) grid[p.row][p.col] = p.rank;
+      const grid = emptyGrid<number | null>(size, null);
+      for (const p of detail.points) setCell(grid, p.row, p.col, p.rank);
       const competitors = detail.competitors.slice(0, args.competitors).map((c) => ({
         name: c.name, atrp: c.atrp, arp: c.arp, solv: c.solv, rating: c.rating, ratingCount: c.ratingCount,
       }));
@@ -236,7 +238,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       annotations: { readOnlyHint: true },
     },
     guard(async (args: { businessId: string }) => {
-      const overview = await getGbpOverview(deps.db, ws, args.businessId);
+      const overview = await getGbpOverview(deps.db, ws, asBusinessId(args.businessId));
       const l = overview.latest;
       return ok(
         l
@@ -262,7 +264,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       annotations: { readOnlyHint: true },
     },
     guard(async (args: { businessId: string; unansweredOnly: boolean; limit: number; cursor?: string }) => {
-      const page = await listReviews(deps.db, ws, args.businessId, {
+      const page = await listReviews(deps.db, ws, asBusinessId(args.businessId), {
         limit: args.limit,
         cursor: args.cursor,
         unansweredOnly: args.unansweredOnly,

@@ -3,6 +3,8 @@ import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { AppError } from "@/shared/errors";
+import { first as firstRow } from "@/shared/assert";
+import { asTrackerId, type TrackerId, type WorkspaceId } from "@/shared/ids";
 import { creditsForProviderUsd } from "@/shared/pricing";
 import { saveAlertSettings } from "@/worker/alerts";
 import { getBalance } from "@/worker/billing/credits";
@@ -42,8 +44,8 @@ async function hostedHarness(credits = 1000) {
   const counts: Counts = { posts: 0, reviewPosts: 0 };
   const h = await createHarness({
     env: { BILLING_MODE: "hosted", AUTH_MODE: "local_noauth" },
-    provider: (clock) => {
-      const inner = new MockDataForSeo({ now: () => clock.now });
+    provider: (clock, target) => {
+      const inner = new MockDataForSeo({ now: () => clock.now, target });
       return wrapProvider(inner, {
         postTasks: async (i) => (counts.posts++, inner.postTasks(i)),
         postReviewsTask: async (i) => (counts.reviewPosts++, inner.postReviewsTask(i)),
@@ -60,8 +62,8 @@ const jobAlerts = (h: Harness) => h.db.select().from(alerts).then((rows) => rows
 
 describe("dead-letter queue consumer: scans", () => {
   let h: Harness;
-  let ws: string;
-  let trackerId: string;
+  let ws: WorkspaceId;
+  let trackerId: TrackerId;
   let counts: Counts;
   beforeEach(async () => {
     ({ h, ws, counts } = await hostedHarness());
@@ -88,7 +90,7 @@ describe("dead-letter queue consumer: scans", () => {
     expect(points.every((p) => p.status === "failed" && p.error === FAILED_AFTER_RETRIES)).toBe(true);
     expect(await getBalance(h.db, ws)).toBe(start);
     expect((await refunds(h, "scan_refund")).map((r) => r.delta)).toEqual([held]);
-    const [alert] = await jobAlerts(h);
+    const alert = firstRow(await jobAlerts(h), "the job_failed alert");
     expect(alert).toMatchObject({ workspaceId: ws, trackerId, scanId, severity: "warning", businessId: null, snapshotId: null });
     expect(JSON.parse(alert.metrics)).toEqual({ message: FAILED_AFTER_RETRIES });
 
@@ -189,7 +191,7 @@ describe("dead-letter queue consumer: Google profile snapshots", () => {
     const msg = new FakeMessage({ type: "gbp_reviews_collect", snapshotId, attempt: 4 }, 6);
     await deliver(h.deps, DLQ_QUEUE, msg);
     expect(msg.acked).toBe(1);
-    const [snap] = await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId));
+    const snap = firstRow(await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId)), "the snapshot row");
     expect(snap).toMatchObject({ status: "failed", error: FAILED_AFTER_RETRIES });
     expect(snap.reviewsTaskId).not.toBeNull();
     expect(snap.billedCredits).toBe(creditsForProviderUsd(snap.costUsd, h.config.markup));
@@ -208,8 +210,8 @@ describe("dead-letter queue consumer: Google profile snapshots", () => {
 
 describe("retry policy", () => {
   let h: Harness;
-  let ws: string;
-  let trackerId: string;
+  let ws: WorkspaceId;
+  let trackerId: TrackerId;
   let counts: Counts;
   let start: number;
   beforeEach(async () => {
@@ -304,8 +306,8 @@ describe("GET /api/ops/failed-jobs and POST /api/scans/:id/retry", () => {
     const counts: Counts = { posts: 0, reviewPosts: 0 };
     const h = await createHarness({
       env,
-      provider: (clock) => {
-        const inner = new MockDataForSeo({ now: () => clock.now });
+      provider: (clock, target) => {
+        const inner = new MockDataForSeo({ now: () => clock.now, target });
         return wrapProvider(inner, { postTasks: async (i) => (counts.posts++, inner.postTasks(i)) });
       },
     });
@@ -331,7 +333,7 @@ describe("GET /api/ops/failed-jobs and POST /api/scans/:id/retry", () => {
     const t = await twoWorkspaces();
     const failed = await deadScan(t);
     // An older failure is out of the window.
-    const old = await createScan(t.h.deps, (await t.a.call("GET", "/api/me")).json.workspace.id, t.trackerId, { trigger: "manual" });
+    const old = await createScan(t.h.deps, (await t.a.call("GET", "/api/me")).json.workspace.id, asTrackerId(t.trackerId), { trigger: "manual" });
     await t.h.db.update(scans).set({ status: "failed", error: "ancient", createdAt: new Date(t.h.clock.now - 31 * 86_400_000).toISOString() }).where(eq(scans.id, old.scanId));
     const wsA = (await t.a.call("GET", "/api/me")).json.workspace.id as string;
     await t.h.db.insert(gbpSnapshots).values({ id: "snap-1", workspaceId: wsA, businessId: t.businessId, trigger: "schedule", takenAt: new Date(t.h.clock.now + 1000).toISOString(), status: "failed", error: "Profile lookup failed: x" });

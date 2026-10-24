@@ -28,6 +28,8 @@ export function toViewData(d: ScanDetail): ScanViewData {
     points: d.points,
     metrics: d.metrics,
     competitors: d.competitors,
+    competitorsExpired: d.competitorsExpired,
+    retentionDays: d.retentionDays,
   };
 }
 

@@ -10,6 +10,7 @@ import { AppError } from "@/shared/errors";
 import { listAlerts } from "../alerts";
 import type { AuthContext } from "../auth/accounts";
 import { getGbpOverview, listReviews } from "../gbp/queries";
+import { throttleScans } from "../ratelimit";
 import { createScan } from "../scans/service";
 import { getScanDetail, listTrackerSummaries, listWorkspaceScans } from "../scans/queries";
 import type { ProcessDeps } from "../scans/process";
@@ -88,6 +89,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: false },
     },
     guard(async (args: { trackerId: string; maxCostUsd: number }) => {
+      await throttleScans(deps, ws);
       const { scanId, quote } = await createScan(deps, ws, args.trackerId, {
         trigger: "mcp",
         maxCostUsd: args.maxCostUsd,
@@ -181,7 +183,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
     {
       title: "List alerts",
       description:
-        "List rank-drop alerts (ATRP/SoLV/found-points drops, lost top-3 at the center, or scans with mostly failed points), unread first. Each shows the metrics before and after.",
+        "List rank-drop alerts (ATRP/SoLV/found-points drops, lost top-3 at the center, or scans with mostly failed points), failed jobs, Google profile rating drops and low-star reviews, unread first. Each shows the metrics before and after.",
       inputSchema: {
         unreadOnly: z.boolean().default(false),
         limit: z.number().int().min(1).max(100).default(20),
@@ -193,6 +195,12 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       const rows = (args.unreadOnly ? all.filter((a) => a.readAt === null) : all).slice(0, args.limit).map((a) => {
         const common = { alertId: a.id, kind: a.kind, severity: a.severity, business: a.businessName, createdAt: a.createdAt, read: a.readAt !== null };
         const line = `${common.read ? "  " : "* "}${a.severity} ${a.kind} ${a.businessName}`;
+        if (a.source === "job") {
+          return {
+            row: { ...common, jobType: a.jobType, trackerId: a.trackerId, businessId: a.businessId, scanId: a.scanId, snapshotId: a.snapshotId, keyword: a.keyword, message: a.message },
+            text: `${line}${a.keyword ? ` / "${a.keyword}"` : ""}: job failed (${a.message})`,
+          };
+        }
         if (a.source === "gbp") {
           const { rating, reviewCount, negativeReviews } = a.metrics;
           return {

@@ -190,6 +190,10 @@ export type ScanDetail = {
     error: string | null;
   }>;
   metrics: ScanMetrics | null;
+  /** True once retention pruned this scan's competitor rows; `competitors` is then empty by design. */
+  competitorsExpired: boolean;
+  /** Days the app keeps competitor rows; added by GET /api/scans/:id for the "expired" message. */
+  retentionDays?: number;
   competitors: CompetitorSummary[];
   /** Listings with the tracked website that are not the tracked place (e.g. a different/duplicate Google listing). */
   otherListings: Array<{ name: string; placeId: string | null; points: number; bestRank: number }>;
@@ -274,8 +278,13 @@ export async function getScanDetail(
     business: { id: business.id, name: business.name, lat: business.lat, lng: business.lng, address: business.address },
     points,
     metrics,
-    competitors: options.competitors && scan.status === "completed" ? await getCompetitors(db, scanId, completedPoints.map((p) => p.id)) : [],
-    otherListings: await getOtherListings(db, scanId, business.domain),
+    // Retention pruned the per-point competitor rows; the grid and metrics above remain.
+    competitorsExpired: scan.resultsPrunedAt !== null,
+    competitors:
+      options.competitors && scan.status === "completed" && scan.resultsPrunedAt === null
+        ? await getCompetitors(db, scanId, completedPoints.map((p) => p.id))
+        : [],
+    otherListings: scan.resultsPrunedAt === null ? await getOtherListings(db, scanId, business.domain) : [],
   };
 }
 
@@ -327,7 +336,7 @@ export async function getPointResults(
   scope: { workspaceId: string } | { trackerId: string },
 ) {
   const [owner] = await db
-    .select({ id: scans.id })
+    .select({ id: scans.id, resultsPrunedAt: scans.resultsPrunedAt })
     .from(scans)
     .where(
       "workspaceId" in scope
@@ -340,18 +349,26 @@ export async function getPointResults(
     .from(scanPoints)
     .where(and(eq(scanPoints.id, pointId), eq(scanPoints.scanId, scanId)));
   if (!point) throw new AppError("NOT_FOUND", "Point not found");
-  const results = await db
-    .select({
-      rank: scanResults.rank,
-      name: scanResults.name,
-      rating: scanResults.rating,
-      ratingCount: scanResults.ratingCount,
-      category: scanResults.category,
-      address: scanResults.address,
-      isTarget: scanResults.isTarget,
-    })
-    .from(scanResults)
-    .where(eq(scanResults.pointId, pointId))
-    .orderBy(scanResults.rank);
-  return { point: { id: point.id, row: point.row, col: point.col, lat: point.lat, lng: point.lng, rank: point.rank, status: point.status }, results };
+  const expired = owner.resultsPrunedAt !== null;
+  const results = expired
+    ? []
+    : await db
+        .select({
+          rank: scanResults.rank,
+          name: scanResults.name,
+          rating: scanResults.rating,
+          ratingCount: scanResults.ratingCount,
+          category: scanResults.category,
+          address: scanResults.address,
+          isTarget: scanResults.isTarget,
+        })
+        .from(scanResults)
+        .where(eq(scanResults.pointId, pointId))
+        .orderBy(scanResults.rank);
+  return {
+    point: { id: point.id, row: point.row, col: point.col, lat: point.lat, lng: point.lng, rank: point.rank, status: point.status },
+    results,
+    // Retention pruned the competitor rows; the point's own rank above remains.
+    competitorsExpired: expired,
+  };
 }

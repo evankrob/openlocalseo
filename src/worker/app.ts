@@ -1,5 +1,5 @@
 import { nominatimGeocoder } from "./geocode";
-import { Hono } from "hono";
+import { Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { JWTVerifyGetKey } from "jose";
 import { ZodError, z, type ZodType } from "zod";
@@ -23,6 +23,8 @@ import { createDb } from "./db";
 import { createDataForSeo } from "./dataforseo";
 import type { Env } from "./env";
 import { handleMcpRequest } from "./mcp/server";
+import { listFailedJobs, retryScan } from "./ops";
+import { buildRules, createRateLimiter, enforceRateLimit, throttleApiKey, throttleScans } from "./ratelimit";
 import { createWebhookSender } from "./notify";
 import { createShare, getBranding, getPublicPointResults, getPublicReport, listShares, revokeShare, saveBranding } from "./reports";
 import type { ProcessDeps } from "./scans/process";
@@ -47,8 +49,16 @@ export function defaultResolveDeps(env: Env, ctx?: Pick<ExecutionContext, "waitU
     config: loadConfig(env),
     provider: createDataForSeo(env),
     notify: createWebhookSender(),
+    rateLimiter: createRateLimiter({ db: createDb(env.DB), env }),
     waitUntil: ctx ? (promise) => ctx.waitUntil(promise) : undefined,
-    raw: { put: async (key, body) => void (await env.R2.put(key, body, { httpMetadata: { contentType: "application/json" } })) },
+    raw: {
+      put: async (key, body) => void (await env.R2.put(key, body, { httpMetadata: { contentType: "application/json" } })),
+      deletePrefix: async (prefix, limit) => {
+        const { objects } = await env.R2.list({ prefix, limit });
+        if (objects.length > 0) await env.R2.delete(objects.map((o) => o.key));
+        return objects.length;
+      },
+    },
   };
 }
 
@@ -72,6 +82,11 @@ export function createApp(options: AppOptions = {}) {
       return c.json({ error: { code: "VALIDATION_ERROR", message } }, 400);
     }
     if (error instanceof AppError) {
+      if (error.code === "RATE_LIMITED") {
+        const retryAfterSeconds = Number(error.details?.retryAfterSeconds) || 60;
+        c.header("Retry-After", String(retryAfterSeconds));
+        return c.json({ error: { code: error.code, message: error.message, retryAfterSeconds } }, ERROR_STATUS[error.code] as 429);
+      }
       return c.json({ error: { code: error.code, message: error.message } }, ERROR_STATUS[error.code] as 400);
     }
     console.error("unhandled", error);
@@ -90,9 +105,16 @@ export function createApp(options: AppOptions = {}) {
     return c.json({ authMode: config.authMode, billingMode: config.billingMode, dataMode: provider.mode, markup: config.markup });
   });
 
+  // Per IP: the tokens are unguessable, but the links are public and cost D1 reads.
+  app.use("/api/public/reports/*", async (c, next) => {
+    const { rateLimiter, config } = c.get("deps");
+    await enforceRateLimit(rateLimiter, buildRules(config.rateLimits).publicReport, clientIp(c));
+    await next();
+  });
   app.get("/api/public/reports/:token", async (c) => {
     c.header("Cache-Control", "no-store");
-    return c.json(await getPublicReport(c.get("deps").db, c.req.param("token"), { scanId: c.req.query("scan") }));
+    const { db, config } = c.get("deps");
+    return c.json(await getPublicReport(db, c.req.param("token"), { scanId: c.req.query("scan"), retentionDays: config.retention.scanResultsDays }));
   });
   app.get("/api/public/reports/:token/points/:pointId", async (c) => {
     c.header("Cache-Control", "no-store");
@@ -115,7 +137,16 @@ export function createApp(options: AppOptions = {}) {
       expires,
     });
   };
-  app.post("/api/auth/signup", async (c) => {
+  // Per IP; signup and login share the counters (brute force, account spam).
+  const authThrottle: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> = async (c, next) => {
+    const { rateLimiter, config } = c.get("deps");
+    const rules = buildRules(config.rateLimits);
+    const ip = clientIp(c);
+    await enforceRateLimit(rateLimiter, rules.authMinute, ip);
+    await enforceRateLimit(rateLimiter, rules.authHour, ip);
+    await next();
+  };
+  app.post("/api/auth/signup", authThrottle, async (c) => {
     const deps = c.get("deps");
     hostedOnly(deps);
     const input = await body(c, z.object({ email: z.string(), password: z.string(), name: z.string().max(80).optional() }));
@@ -123,10 +154,12 @@ export function createApp(options: AppOptions = {}) {
     await startSession(c, deps.db, userId);
     return c.json({ ok: true }, 201);
   });
-  app.post("/api/auth/login", async (c) => {
+  app.post("/api/auth/login", authThrottle, async (c) => {
     const deps = c.get("deps");
     hostedOnly(deps);
     const input = await body(c, z.object({ email: z.string(), password: z.string() }));
+    // Also per account, so spreading guesses over many IPs does not help.
+    await enforceRateLimit(deps.rateLimiter, buildRules(deps.config.rateLimits).loginEmail, input.email.trim().toLowerCase());
     const user = await logIn(deps.db, input.email, input.password);
     await startSession(c, deps.db, user.id);
     return c.json({ ok: true });
@@ -144,6 +177,7 @@ export function createApp(options: AppOptions = {}) {
     const header = c.req.header("authorization");
     if (!header?.toLowerCase().startsWith("bearer ")) throw new AppError("UNAUTHENTICATED", "Send your API key as a Bearer token");
     const auth = await authenticate(c, { db: deps.db, config: deps.config, env: c.env });
+    await throttleApiKey(deps, auth);
     return handleMcpRequest(c.req.raw, { auth, deps, baseUrl: new URL(c.req.url).origin });
   });
 
@@ -162,7 +196,9 @@ export function createApp(options: AppOptions = {}) {
   const api = new Hono<{ Bindings: Env; Variables: Variables }>();
   api.use("*", async (c, next) => {
     const deps = c.get("deps");
-    c.set("auth", await authenticate(c, { db: deps.db, config: deps.config, env: c.env, accessKeys: options.accessKeys }));
+    const auth = await authenticate(c, { db: deps.db, config: deps.config, env: c.env, accessKeys: options.accessKeys });
+    c.set("auth", auth);
+    await throttleApiKey(deps, auth);
     await next();
   });
 
@@ -213,6 +249,7 @@ export function createApp(options: AppOptions = {}) {
   api.post("/businesses/:id/gbp/refresh", async (c) => {
     const raw = await c.req.json().catch(() => ({}));
     const input = gbpRefreshSchema.parse(raw);
+    await throttleScans(c.get("deps"), c.get("auth").workspaceId);
     const result = await createGbpSnapshot(c.get("deps"), c.get("auth").workspaceId, c.req.param("id"), { trigger: "manual", maxCostUsd: input.maxCostUsd });
     return c.json(result, 202);
   });
@@ -267,6 +304,7 @@ export function createApp(options: AppOptions = {}) {
   api.post("/trackers/:id/scans", async (c) => {
     const raw = await c.req.json().catch(() => ({}));
     const input = z.object({ maxCostUsd: z.number().positive().optional() }).parse(raw);
+    await throttleScans(c.get("deps"), c.get("auth").workspaceId);
     const result = await createScan(c.get("deps"), c.get("auth").workspaceId, c.req.param("id"), { trigger: "manual", maxCostUsd: input.maxCostUsd });
     return c.json(result, 202);
   });
@@ -292,10 +330,30 @@ export function createApp(options: AppOptions = {}) {
   api.get("/scans", async (c) =>
     c.json(await listWorkspaceScans(c.get("deps").db, c.get("auth").workspaceId, { limit: Number(c.req.query("limit")) || 20 })),
   );
-  api.get("/scans/:id", async (c) => c.json(await getScanDetail(c.get("deps").db, c.req.param("id"), { workspaceId: c.get("auth").workspaceId })));
+  api.get("/scans/:id", async (c) => {
+    const { db, config } = c.get("deps");
+    const detail = await getScanDetail(db, c.req.param("id"), { workspaceId: c.get("auth").workspaceId });
+    return c.json({ ...detail, retentionDays: config.retention.scanResultsDays });
+  });
+  api.post("/scans/:id/retry", async (c) => {
+    const auth = c.get("auth");
+    requireRole(auth, "admin");
+    const raw = await c.req.json().catch(() => ({}));
+    const input = z.object({ maxCostUsd: z.number().positive().optional() }).parse(raw);
+    const deps = c.get("deps");
+    await throttleScans(deps, auth.workspaceId);
+    return c.json(await retryScan(deps, auth.workspaceId, c.req.param("id"), { maxCostUsd: input.maxCostUsd }), 202);
+  });
   api.get("/scans/:id/points/:pointId", async (c) =>
     c.json(await getPointResults(c.get("deps").db, c.req.param("id"), c.req.param("pointId"), { workspaceId: c.get("auth").workspaceId })),
   );
+
+  // operations
+  api.get("/ops/failed-jobs", async (c) => {
+    const auth = c.get("auth");
+    requireRole(auth, "admin");
+    return c.json(await listFailedJobs(c.get("deps").db, auth.workspaceId));
+  });
 
   // alerts
   api.get("/alerts", async (c) => {
@@ -356,6 +414,11 @@ export function createApp(options: AppOptions = {}) {
   // Anything under /api that did not match.
   app.all("/api/*", (c) => c.json({ error: { code: "NOT_FOUND", message: "Not found" } }, 404));
   return app;
+}
+
+/** Cloudflare sets cf-connecting-ip; other headers are client-controlled, so they are not trusted. */
+function clientIp(c: { req: { header: (name: string) => string | undefined } }): string {
+  return c.req.header("cf-connecting-ip") ?? "unknown";
 }
 
 function timingSafeEqual(a: string, b: string): boolean {

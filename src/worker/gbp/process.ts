@@ -251,7 +251,7 @@ async function completeSnapshot(deps: ProcessDeps, snapshot: SnapshotRow, outcom
 }
 
 /** Fails an active snapshot and settles credits on what was actually spent (nothing spent = full refund). */
-async function failSnapshot(deps: ProcessDeps, snapshotId: string, error: string): Promise<boolean> {
+export async function failSnapshot(deps: ProcessDeps, snapshotId: string, error: string): Promise<boolean> {
   const won = await deps.db
     .update(gbpSnapshots)
     .set({ status: "failed", error, completedAt: nowIso(deps.now?.()) })

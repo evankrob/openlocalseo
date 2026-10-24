@@ -33,7 +33,27 @@ function Change({ label, before, after, format }: { label: string; before: numbe
   );
 }
 
+/** Where an alert points: the tracker or business it concerns, and the scan or profile to open. */
+function target(a: AlertListItem) {
+  const business = a.source === "gbp" || (a.source === "job" && a.jobType === "gbp");
+  if (business) {
+    const id = a.businessId;
+    return { name: a.businessName, to: `/businesses/${id}`, sub: "Google profile", view: `/businesses/${id}`, viewLabel: "View profile" };
+  }
+  const { keyword } = a;
+  return {
+    name: a.businessName,
+    to: `/trackers/${a.trackerId}`,
+    sub: keyword ? `“${keyword}”` : "",
+    view: `/scans/${a.scanId}`,
+    viewLabel: "View scan",
+  };
+}
+
 function Metrics({ alert }: { alert: AlertListItem }) {
+  if (alert.source === "job") {
+    return <div className="max-w-xs text-xs">{alert.message}. Nothing is lost: run it again from the tracker or Settings &rarr; Failed jobs.</div>;
+  }
   if (alert.source === "gbp") {
     const { rating, reviewCount, negativeReviews } = alert.metrics;
     return (
@@ -90,30 +110,17 @@ export function AlertsPage() {
                         <Badge tone={a.severity === "critical" ? "danger" : "warning"}>{a.severity === "critical" ? "Critical" : "Warning"}</Badge>
                       </div>
                       <div className="mt-1 text-xs">
-                        {a.source === "gbp" ? GBP_KIND_LABEL[a.kind] : a.metrics.reasons.map((r) => REASON_LABEL[r] ?? r).join(", ")}
+                        {a.source === "job" ? "Job failed" : a.source === "gbp" ? GBP_KIND_LABEL[a.kind] : a.metrics.reasons.map((r) => REASON_LABEL[r] ?? r).join(", ")}
                       </div>
                     </Td>
                     <Td>
-                      {a.source === "gbp" ? (
-                        <>
-                          <Link className="font-medium hover:underline" to={`/businesses/${a.businessId}`}>{a.businessName}</Link>
-                          <div className="text-xs text-muted-foreground">Google profile</div>
-                        </>
-                      ) : (
-                        <>
-                          <Link className="font-medium hover:underline" to={`/trackers/${a.trackerId}`}>{a.businessName}</Link>
-                          <div className="text-xs text-muted-foreground">&ldquo;{a.keyword}&rdquo;</div>
-                        </>
-                      )}
+                      <Link className="font-medium hover:underline" to={target(a).to}>{a.businessName}</Link>
+                      <div className="text-xs text-muted-foreground">{target(a).sub}</div>
                     </Td>
                     <Td className="text-sm"><Metrics alert={a} /></Td>
                     <Td className="whitespace-nowrap text-xs">{fmtDateTime(a.createdAt)}</Td>
                     <Td className="whitespace-nowrap text-right">
-                      {a.source === "gbp" ? (
-                        <Link to={`/businesses/${a.businessId}`}><Button size="sm" variant="outline">View profile</Button></Link>
-                      ) : (
-                        <Link to={`/scans/${a.scanId}`}><Button size="sm" variant="outline">View scan</Button></Link>
-                      )}
+                      <Link to={target(a).view}><Button size="sm" variant="outline">{target(a).viewLabel}</Button></Link>
                       {!a.readAt && <Button size="sm" variant="ghost" className="ml-1" disabled={markRead.isPending} onClick={() => markRead.mutate(a.id)}>Mark read</Button>}
                     </Td>
                   </tr>

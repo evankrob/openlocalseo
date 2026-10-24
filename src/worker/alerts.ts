@@ -270,6 +270,66 @@ export async function createGbpAlertsSafely(deps: AlertDeps, snapshotId: string)
   }
 }
 
+// ---- failed jobs --------------------------------------------------------------------
+
+export type FailedJobTarget = { type: "scan"; scanId: string } | { type: "gbp"; snapshotId: string };
+
+/**
+ * Raised by the dead-letter consumer (and permanent-error handling) when a job
+ * is failed. Idempotent: (scan, kind) and (snapshot, kind) are unique, and only
+ * an inserted alert reaches the webhook. Errors are logged, never thrown.
+ */
+export async function createJobFailedAlertSafely(deps: AlertDeps, target: FailedJobTarget, message: string): Promise<void> {
+  try {
+    const { db } = deps;
+    let row: { workspaceId: string; trackerId: string | null; businessId: string; label: string; keyword: string | null };
+    if (target.type === "scan") {
+      const [found] = await db
+        .select({ workspaceId: scans.workspaceId, trackerId: scans.trackerId, businessId: trackers.businessId, label: businesses.name, keyword: scans.keyword })
+        .from(scans)
+        .innerJoin(trackers, eq(trackers.id, scans.trackerId))
+        .innerJoin(businesses, eq(businesses.id, trackers.businessId))
+        .where(eq(scans.id, target.scanId));
+      if (!found) return;
+      row = found;
+    } else {
+      const [found] = await db
+        .select({ workspaceId: gbpSnapshots.workspaceId, businessId: gbpSnapshots.businessId, label: businesses.name })
+        .from(gbpSnapshots)
+        .innerJoin(businesses, eq(businesses.id, gbpSnapshots.businessId))
+        .where(eq(gbpSnapshots.id, target.snapshotId));
+      if (!found) return;
+      row = { ...found, trackerId: null, keyword: null };
+    }
+    const settings = await getAlertSettings(db, row.workspaceId);
+    if (!settings.enabled) return;
+
+    const inserted = await db
+      .insert(alerts)
+      .values({
+        id: newId(),
+        workspaceId: row.workspaceId,
+        trackerId: row.trackerId,
+        scanId: target.type === "scan" ? target.scanId : null,
+        businessId: target.type === "gbp" ? row.businessId : null,
+        snapshotId: target.type === "gbp" ? target.snapshotId : null,
+        kind: "job_failed",
+        severity: "warning",
+        metrics: JSON.stringify({ message } satisfies JobFailedMetrics),
+        createdAt: nowIso(deps.now?.()),
+      })
+      .onConflictDoNothing()
+      .returning({ id: alerts.id });
+    if (inserted.length === 0 || !settings.webhookUrl || !deps.notify) return;
+    const what = target.type === "scan" ? `scan for "${row.keyword}"` : "Google profile refresh";
+    sendWebhook(deps, settings.webhookUrl, inserted[0].id, `:warning: Warning: ${row.label}: the ${what} failed (${message}). Nothing is lost; run it again from the app.`);
+  } catch (error) {
+    console.error("alert.create-failed", { target, message: error instanceof Error ? error.message : "unknown error" });
+  }
+}
+
+export type JobFailedMetrics = { message: string };
+
 // ---- read model -------------------------------------------------------------------
 
 type AlertBase = {
@@ -280,6 +340,17 @@ type AlertBase = {
   readAt: string | null;
 };
 export type AlertListItem =
+  | (AlertBase & {
+      source: "job";
+      kind: "job_failed";
+      jobType: "scan" | "gbp";
+      trackerId: string | null;
+      businessId: string | null;
+      scanId: string | null;
+      snapshotId: string | null;
+      keyword: string | null;
+      message: string;
+    })
   | (AlertBase & {
       source: "scan";
       kind: "rank_drop" | "data_problem";
@@ -319,7 +390,20 @@ export async function listAlerts(db: Db, workspaceId: string, options: { limit: 
   const items: AlertListItem[] = [];
   for (const { alert, keyword, businessName } of rows) {
     const base = { id: alert.id, severity: alert.severity, businessName, createdAt: alert.createdAt, readAt: alert.readAt };
-    if (alert.kind === "rating_drop" || alert.kind === "negative_review") {
+    if (alert.kind === "job_failed") {
+      items.push({
+        ...base,
+        source: "job",
+        kind: alert.kind,
+        jobType: alert.snapshotId ? "gbp" : "scan",
+        trackerId: alert.trackerId,
+        businessId: alert.businessId,
+        scanId: alert.scanId,
+        snapshotId: alert.snapshotId,
+        keyword: keyword ?? null,
+        message: (JSON.parse(alert.metrics) as JobFailedMetrics).message,
+      });
+    } else if (alert.kind === "rating_drop" || alert.kind === "negative_review") {
       items.push({
         ...base,
         source: "gbp",

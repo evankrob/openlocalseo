@@ -105,7 +105,7 @@ async function resolveShare(db: Db, token: string, now: Date) {
   return share;
 }
 
-export async function getPublicReport(db: Db, token: string, options: { scanId?: string; now?: Date } = {}) {
+export async function getPublicReport(db: Db, token: string, options: { scanId?: string; now?: Date; retentionDays?: number } = {}) {
   const share = await resolveShare(db, token, options.now ?? new Date());
   const [row] = await db
     .select({ tracker: trackers, business: businesses })
@@ -165,11 +165,13 @@ export async function getPublicReport(db: Db, token: string, options: { scanId?:
       business: { lat: detail.business.lat, lng: detail.business.lng, name: detail.business.name },
     },
     competitors: share.showCompetitors ? (detail?.competitors.slice(0, 15) ?? []) : [],
+    // Retention pruned this scan's competitor rows: the map and metrics are intact.
+    competitorsExpired: share.showCompetitors && (detail?.competitorsExpired ?? false),
+    retentionDays: options.retentionDays ?? null,
   };
 }
 
 export async function getPublicPointResults(db: Db, token: string, scanId: string, pointId: string) {
   const share = await resolveShare(db, token, new Date());
   if (!share.showCompetitors) throw new AppError("NOT_FOUND", "Report not found");
-  return getPointResults(db, scanId, pointId, { trackerId: share.trackerId });
-}
+  return getPointResults(db, scanId, pointId, { trackerId: share.trackerId });}

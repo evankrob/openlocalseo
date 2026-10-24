@@ -8,6 +8,7 @@
 //      tests). Hourly rules always use D1: bindings only count 10s/60s windows.
 // Limiter errors fail open (logged): a broken limiter must not take the API down.
 import { sql } from "drizzle-orm";
+import { must } from "@/shared/assert";
 import { AppError } from "@/shared/errors";
 import type { RateLimitConfig } from "../config";
 import type { Db } from "../db";
@@ -61,7 +62,7 @@ export class DbRateLimiter implements RateLimiter {
       .values({ key: `${rule.name}:${subject}`, windowStart, count: 1 })
       .onConflictDoUpdate({ target: [rateLimits.key, rateLimits.windowStart], set: { count: sql`${rateLimits.count} + 1` } })
       .returning({ count: rateLimits.count });
-    if (row.count <= rule.limit) return { ok: true };
+    if (must(row, "rate limit upsert returns a row").count <= rule.limit) return { ok: true };
     return { ok: false, retryAfterSeconds: Math.max(1, windowStart + rule.windowSeconds - nowSeconds) };
   }
 }

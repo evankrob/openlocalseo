@@ -3,7 +3,7 @@
 // again a month later returns the same older reviews plus the newer ones, and
 // the rating and review count drift with them. Same inputs, same output.
 import { hash32, mulberry32 } from "./world";
-import type { MockHints } from "./types";
+import type { MockHints } from "./world";
 
 /** First simulated review of every place. */
 export const TIMELINE_START_MS = Date.UTC(2026, 0, 1);
@@ -71,7 +71,7 @@ export function profileFacts(placeId: string, atMs: number, hints?: MockHints): 
     assigned += dist[star];
   }
   dist["5"] = baseCount - assigned;
-  for (const r of timeline) dist[String(r.rating)] += 1;
+  for (const r of timeline) dist[String(r.rating)] = (dist[String(r.rating)] ?? 0) + 1;
 
   const reviewCount = baseCount + timeline.length;
   const sum = Object.entries(dist).reduce((acc, [star, n]) => acc + Number(star) * n, 0);

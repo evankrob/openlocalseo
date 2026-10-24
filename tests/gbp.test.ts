@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { createAlertsForSnapshot, createGbpAlertsSafely, saveAlertSettings } from "@/worker/alerts";
 import { getBalance } from "@/worker/billing/credits";
 import { MockDataForSeo } from "@/worker/dataforseo/mock";
-import type { DataForSeoProvider, ReviewsOutcome } from "@/worker/dataforseo/types";
+import type { BilledProvider, DataForSeoProvider, ReviewsOutcome } from "@/worker/dataforseo/types";
 import type { Db } from "@/worker/db";
 import { alerts, apiCalls, businesses, creditLedger, gbpSnapshots, reviews } from "@/worker/db/schema";
 import { reapStaleGbpSnapshots } from "@/worker/gbp/process";
@@ -11,18 +11,19 @@ import { createGbpSnapshot, runDueGbpSnapshots, setGbpTracking } from "@/worker/
 import { handleScanJob } from "@/worker/scans/process";
 import { createHarness, seedWorkspace, type Harness } from "./helpers/harness";
 import { DAY_MS, seedBusiness, snapshotsOf, wrapProvider } from "./helpers/gbp";
+import { at, first as firstRow } from "@/shared/assert";
 
 type Calls = { profile: number; post: number; collect: number };
 
 /** Harness whose provider counts calls and can have methods replaced. */
 async function setup(
-  options: { hosted?: boolean; credits?: number; override?: (inner: MockDataForSeo, clock: { now: number }) => Partial<DataForSeoProvider> } = {},
+  options: { hosted?: boolean; credits?: number; override?: (inner: MockDataForSeo, clock: { now: number }) => Partial<DataForSeoProvider & BilledProvider> } = {},
 ) {
   const calls: Calls = { profile: 0, post: 0, collect: 0 };
   const h = await createHarness({
     env: options.hosted ? { BILLING_MODE: "hosted" } : {},
-    provider: (clock) => {
-      const inner = new MockDataForSeo({ now: () => clock.now });
+    provider: (clock, target) => {
+      const inner = new MockDataForSeo({ now: () => clock.now, target });
       const extra = options.override?.(inner, clock) ?? {};
       return wrapProvider(inner, {
         getBusinessProfile: async (i) => (calls.profile++, (extra.getBusinessProfile ?? inner.getBusinessProfile.bind(inner))(i)),
@@ -39,7 +40,7 @@ async function setup(
 const only = async <T,>(rows: Promise<T[]>) => {
   const all = await rows;
   expect(all).toHaveLength(1);
-  return all[0];
+  return at(all, 0);
 };
 
 /** Delivers the next queued message, without advancing the clock. */
@@ -96,13 +97,13 @@ describe("snapshot pipeline", () => {
     await step(h); // gbp_snapshot: profile call + task_post
     expect((await only(snapshotsOf(h.db, businessId))).reviewsTaskId).toMatch(/^mockrev\./);
 
-    const first = h.queue.messages[0];
+    const first = at(h.queue.messages, 0);
     expect(first.job).toEqual({ type: "gbp_reviews_collect", snapshotId, attempt: 0 });
     expect(first.at - h.clock.now).toBe(5000);
 
     await step(h); // too early: the mock's queue delay has not passed
     expect((await only(snapshotsOf(h.db, businessId))).status).toBe("running");
-    const second = h.queue.messages[0];
+    const second = at(h.queue.messages, 0);
     expect(second.job).toMatchObject({ type: "gbp_reviews_collect", attempt: 1 });
     expect(second.at - h.clock.now).toBe(8000); // 5s * 1.5, rounded up
 
@@ -147,7 +148,7 @@ describe("snapshot pipeline", () => {
     // first_seen stays on the snapshot that saw the review first.
     const firstSeen = new Set(before.map((r) => r.firstSeenSnapshotId));
     expect(after.filter((r) => firstSeen.has(r.firstSeenSnapshotId)).length).toBeGreaterThanOrEqual(19);
-    const [secondRow] = await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, second.snapshotId));
+    const secondRow = firstRow(await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, second.snapshotId)), "the second snapshot row");
     expect(secondRow.newReviews).toBe(after.filter((r) => r.firstSeenSnapshotId === second.snapshotId).length);
   });
 
@@ -159,7 +160,7 @@ describe("snapshot pipeline", () => {
     const { snapshotId } = await createGbpSnapshot(h.deps, ws, businessId, { trigger: "schedule" });
     await h.queue.drain(h.deps);
 
-    const [snap] = await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId));
+    const snap = firstRow(await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId)), "the snapshot row");
     const fresh = await h.db.select().from(reviews).where(eq(reviews.firstSeenSnapshotId, snapshotId));
     expect(snap.newReviews).toBeGreaterThan(0);
     expect(snap.newReviews).toBe(fresh.length);
@@ -220,7 +221,7 @@ describe("hosted credits", () => {
     expect(quote).toMatchObject({ credits: 9, chargedUsd: 0.008832 });
     expect(await getBalance(h.db, ws)).toBe(491);
     await h.queue.drain(h.deps);
-    const [snap] = await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId));
+    const snap = firstRow(await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId)), "the snapshot row");
     expect(snap).toMatchObject({ status: "completed", reservedCredits: 9, billedCredits: 9 });
     expect(await getBalance(h.db, ws)).toBe(491);
     // Ledger rows are not linked to a scan (scan_id is a foreign key to scans).
@@ -355,17 +356,17 @@ describe("monthly schedule", () => {
     const archived = await seedBusiness(h.db, ws, { gbpTracking: true, gbpNextRunAt: due, archivedAt: "2026-10-02T00:00:00.000Z" });
 
     expect(await runDueGbpSnapshots(h.deps)).toEqual({ started: 1, failed: 0 });
-    const [aSnap] = await snapshotsOf(h.db, a);
+    const aSnap = firstRow(await snapshotsOf(h.db, a), "the scheduled snapshot");
     expect(aSnap).toMatchObject({ trigger: "schedule", status: "queued" });
     for (const id of [later, off, archived]) expect(await snapshotsOf(h.db, id)).toHaveLength(0);
-    const next = async (id: string) => (await h.db.select().from(businesses).where(eq(businesses.id, id)))[0].gbpNextRunAt;
+    const next = async (id: string) => at(await h.db.select().from(businesses).where(eq(businesses.id, id)), 0).gbpNextRunAt;
     expect(await next(a)).toBe("2026-11-01T00:00:00.000Z");
     expect(await next(off)).toBe(due);
 
     // The same day again does nothing, and the queued snapshot completes.
     expect(await runDueGbpSnapshots(h.deps)).toEqual({ started: 0, failed: 0 });
     await h.queue.drain(h.deps);
-    expect((await snapshotsOf(h.db, a))[0].status).toBe("completed");
+    expect(at(await snapshotsOf(h.db, a), 0).status).toBe("completed");
   });
 
   it("leaves a visible failed snapshot when a scheduled run cannot start, and still moves on", async () => {
@@ -375,7 +376,7 @@ describe("monthly schedule", () => {
     const snap = await only(snapshotsOf(h.db, id));
     expect(snap).toMatchObject({ status: "failed", trigger: "schedule" });
     expect(snap.error).toContain("INSUFFICIENT_CREDITS");
-    expect((await h.db.select().from(businesses).where(eq(businesses.id, id)))[0].gbpNextRunAt).toBe("2026-11-01T00:00:00.000Z");
+    expect(at(await h.db.select().from(businesses).where(eq(businesses.id, id)), 0).gbpNextRunAt).toBe("2026-11-01T00:00:00.000Z");
   });
 
   it("the toggle schedules the 1st of next month on, clears it off, and needs a place ID", async () => {
@@ -444,7 +445,7 @@ describe("GBP alerts", () => {
     const { h, ws, businessId, second, first } = await twoSnapshots();
     const rows = await allAlerts(h);
     const drop = rows.find((r) => r.kind === "rating_drop")!;
-    const [snap] = await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, second));
+    const snap = firstRow(await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, second)), "the second snapshot row");
     expect(drop).toMatchObject({ workspaceId: ws, businessId, snapshotId: second, trackerId: null, scanId: null, severity: "critical", readAt: null });
     const metrics = JSON.parse(drop.metrics);
     expect(metrics.rating).toEqual({ before: 5.6, after: snap.rating });
@@ -454,7 +455,7 @@ describe("GBP alerts", () => {
 
   it("raises one negative_review alert for a new 1-star review and not for a 3-star one", async () => {
     const low = await twoSnapshots({ badReview: 1, before: 4.7 });
-    const [neg] = (await allAlerts(low.h)).filter((r) => r.kind === "negative_review");
+    const neg = firstRow((await allAlerts(low.h)).filter((r) => r.kind === "negative_review"), "the negative_review alert");
     expect(neg).toMatchObject({ snapshotId: low.second, severity: "warning" });
     const metrics = JSON.parse(neg.metrics);
     expect(metrics.negativeReviews.count).toBeGreaterThanOrEqual(1);
@@ -509,7 +510,7 @@ describe("GBP alerts", () => {
 
   it("the unique index refuses a second alert of the same kind for a snapshot", async () => {
     const { h, ws, businessId, second } = await twoSnapshots();
-    const [row] = await allAlerts(h);
+    const row = firstRow(await allAlerts(h), "an alert");
     const error = await h.db
       .insert(alerts)
       .values({ ...row, id: "dup", workspaceId: ws, businessId, snapshotId: second })

@@ -1,11 +1,13 @@
 import { eq } from "drizzle-orm";
+import { must } from "@/shared/assert";
+import { asBusinessId, asTrackerId, asWorkspaceId } from "@/shared/ids";
 import { loadConfig, type AppConfig } from "@/worker/config";
 import type { Db } from "@/worker/db";
 import { businesses, scans, trackers, workspaces } from "@/worker/db/schema";
 import type { ScanJob, ScanQueue } from "@/worker/scans/jobs";
 import { handleScanJob, type ProcessDeps, type RawStore } from "@/worker/scans/process";
 import { MockDataForSeo, type MockOptions } from "@/worker/dataforseo/mock";
-import type { DataForSeoProvider } from "@/worker/dataforseo/types";
+import type { DataForSeoProvider, ProviderScope } from "@/worker/dataforseo/types";
 import { createTestDb } from "./db";
 
 /** In-memory queue with delivery times, driven by a virtual clock. */
@@ -49,21 +51,24 @@ export type Harness = Awaited<ReturnType<typeof createHarness>>;
 export async function createHarness(opts: {
   env?: Parameters<typeof loadConfig>[0];
   mock?: MockOptions;
-  provider?: (clock: { now: number }) => DataForSeoProvider;
+  /** Builds the provider; `scope` is set when it is built for one business (see `ProcessDeps.scopeProvider`). */
+  provider?: (clock: { now: number }, scope?: ProviderScope) => DataForSeoProvider;
 } = {}) {
   const db = await createTestDb();
   const clock = { now: Date.UTC(2026, 9, 14, 12, 0, 0) };
   const queue = new FakeQueue(clock);
   const config: AppConfig = loadConfig({ DATAFORSEO_MODE: "mock", ...opts.env });
-  const provider = opts.provider?.(clock) ?? new MockDataForSeo({ now: () => clock.now, ...opts.mock });
+  const build = (scope?: ProviderScope) =>
+    opts.provider?.(clock, scope) ?? new MockDataForSeo({ now: () => clock.now, ...opts.mock, target: scope });
+  const provider = build();
   const raw = new MemoryRaw();
-  const deps: ProcessDeps = { db, queue, config, provider, raw, now: () => new Date(clock.now) };
+  const deps: ProcessDeps = { db, queue, config, provider, scopeProvider: build, raw, now: () => new Date(clock.now) };
   return { db, clock, queue, config, provider, raw, deps };
 }
 
 export async function seedWorkspace(db: Db, credits = 0, id = "ws-1") {
   await db.insert(workspaces).values({ id, name: "Test Workspace", slug: id, creditBalance: credits });
-  return id;
+  return asWorkspaceId(id);
 }
 
 export async function seedTracker(
@@ -96,10 +101,10 @@ export async function seedTracker(
     zoom: 15,
     ...trackerOverrides,
   });
-  return { trackerId: id, businessId };
+  return { trackerId: asTrackerId(id), businessId: asBusinessId(businessId) };
 }
 
 export async function getScan(db: Db, id: string) {
   const [scan] = await db.select().from(scans).where(eq(scans.id, id));
-  return scan;
+  return must(scan, `scan ${id}`);
 }

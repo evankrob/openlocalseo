@@ -2,6 +2,7 @@
 // a failed scan. Everything is scoped to one workspace.
 import { and, desc, eq, gte } from "drizzle-orm";
 import { AppError } from "@/shared/errors";
+import { asTrackerId, type ScanId, type WorkspaceId } from "@/shared/ids";
 import type { Db } from "./db";
 import { businesses, gbpSnapshots, scans, trackers } from "./db/schema";
 import type { ProcessDeps } from "./scans/process";
@@ -83,13 +84,13 @@ export async function listFailedJobs(db: Db, workspaceId: string, now: Date = ne
  * hold, new DataForSEO tasks. The failed scan's task ids are never reused (they
  * may already have been billed).
  */
-export async function retryScan(deps: ProcessDeps, workspaceId: string, scanId: string, options: Pick<CreateScanOptions, "maxCostUsd"> = {}) {
+export async function retryScan(deps: ProcessDeps, workspaceId: WorkspaceId, scanId: ScanId, options: Pick<CreateScanOptions, "maxCostUsd"> = {}) {
   const [scan] = await deps.db
     .select({ id: scans.id, status: scans.status, trackerId: scans.trackerId })
     .from(scans)
     .where(and(eq(scans.id, scanId), eq(scans.workspaceId, workspaceId)));
   if (!scan) throw new AppError("NOT_FOUND", "Scan not found");
   if (scan.status !== "failed") throw new AppError("VALIDATION_ERROR", "Only failed scans can be retried");
-  const created = await createScan(deps, workspaceId, scan.trackerId, { trigger: "manual", maxCostUsd: options.maxCostUsd });
+  const created = await createScan(deps, workspaceId, asTrackerId(scan.trackerId), { trigger: "manual", maxCostUsd: options.maxCostUsd });
   return { ...created, retriedScanId: scan.id };
 }

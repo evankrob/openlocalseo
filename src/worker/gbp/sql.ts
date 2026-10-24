@@ -3,6 +3,7 @@
 import { sql } from "drizzle-orm";
 import { REVIEW_TEXT_MAX } from "@/shared/gbp";
 import type { Db } from "../db";
+import { execRaw } from "../db/raw";
 import { newId } from "../lib";
 import type { Review } from "../dataforseo/types";
 
@@ -27,7 +28,7 @@ export async function upsertReviews(
     ownerAnsweredAt: r.ownerAnsweredAt,
   }));
   // `WHERE true` keeps SQLite from reading ON CONFLICT as part of the SELECT.
-  await db.run(sql`
+  await execRaw(db, sql`
     INSERT INTO reviews (id, workspace_id, business_id, review_id, reviewer_name, rating, text,
                          published_at, owner_answered, owner_answered_at, first_seen_snapshot_id)
     SELECT json_extract(j.value, '$.id'), ${ctx.workspaceId}, ${ctx.businessId},

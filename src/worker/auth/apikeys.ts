@@ -1,6 +1,7 @@
 // Workspace API keys, used by the MCP server and scripts. Only a SHA-256 of
 // the key is stored; the plaintext is shown once at creation.
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { asWorkspaceId } from "@/shared/ids";
 import type { Db } from "../db";
 import { apiKeys, memberships, users } from "../db/schema";
 import { newId, nowIso, randomToken, sha256Hex } from "../lib";
@@ -55,5 +56,5 @@ export async function authenticateApiKey(db: Db, key: string): Promise<AuthConte
   // The creator left the workspace: the key stops working with them.
   if (!user || !member) return null;
   await db.update(apiKeys).set({ lastUsedAt: nowIso() }).where(eq(apiKeys.id, row.id));
-  return { userId: row.userId, email: user.email, workspaceId: row.workspaceId, role: member.role, via: "apikey", apiKeyId: row.id };
+  return { userId: row.userId, email: user.email, workspaceId: asWorkspaceId(row.workspaceId), role: member.role, via: "apikey", apiKeyId: row.id };
 }

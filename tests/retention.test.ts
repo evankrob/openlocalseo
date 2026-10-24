@@ -6,12 +6,13 @@ import { runRetention } from "@/worker/retention";
 import { createScan } from "@/worker/scans/service";
 import { createHarness, getScan, seedTracker, seedWorkspace, type Harness } from "./helpers/harness";
 import { business, client } from "./helpers/http";
+import type { TrackerId, WorkspaceId } from "@/shared/ids";
 
 const DAY = 86_400_000;
 
 let h: Harness;
-let ws: string;
-let trackerId: string;
+let ws: WorkspaceId;
+let trackerId: TrackerId;
 
 beforeEach(async () => {
   h = await createHarness({ env: { AUTH_MODE: "local_noauth" } });

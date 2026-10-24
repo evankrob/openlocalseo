@@ -7,10 +7,11 @@ import {
   type QueueMode,
 } from "@/shared/pricing";
 import { AppError } from "@/shared/errors";
+import { asScanId, type ScanId, type TrackerId, type WorkspaceId } from "@/shared/ids";
 import type { AppConfig } from "../config";
 import type { Db } from "../db";
 import { scans, trackers } from "../db/schema";
-import { holdCredits } from "../billing/credits";
+import { withCreditHold } from "../billing/spend";
 import { newId, nowIso } from "../lib";
 import type { ScanQueue } from "./jobs";
 import { insertPoints } from "./sql";
@@ -62,10 +63,10 @@ const ACTIVE = ["queued", "posting", "polling"] as const;
 /** Creates a scan for a tracker, holds credits (hosted) and queues it. */
 export async function createScan(
   deps: ScanDeps,
-  workspaceId: string,
-  trackerId: string,
+  workspaceId: WorkspaceId,
+  trackerId: TrackerId,
   options: CreateScanOptions,
-): Promise<{ scanId: string; quote: ScanQuote }> {
+): Promise<{ scanId: ScanId; quote: ScanQuote }> {
   const { db, queue, config } = deps;
   const [tracker] = await db
     .select()
@@ -88,7 +89,7 @@ export async function createScan(
     radiusKm: tracker.radiusKm,
   });
 
-  const scanId = newId();
+  const scanId = asScanId(newId());
   try {
     await db.insert(scans).values({
       id: scanId,
@@ -120,20 +121,28 @@ export async function createScan(
     throw error;
   }
 
+  let held = false;
   try {
     await insertPoints(
       db,
       scanId,
       points.map((p) => ({ id: newId(), row: p.row, col: p.col, lat: p.lat, lng: p.lng })),
     );
-    if (config.billingMode === "hosted") await holdCredits(db, workspaceId, quote.credits, scanId);
+    await withCreditHold(
+      db,
+      workspaceId,
+      { billingMode: config.billingMode, credits: quote.credits, scope: "scan", refId: scanId },
+      async () => {
+        held = true;
+        await queue.send({ type: "post", scanId });
+      },
+    );
   } catch (error) {
-    // Nothing was charged or queued yet: remove the half-created scan.
-    await db.delete(scans).where(eq(scans.id, scanId));
+    // Nothing was charged yet (the hold failed): remove the half-created scan.
+    // Once the credits are held the row stays so the reaper can refund them.
+    if (!held) await db.delete(scans).where(eq(scans.id, scanId));
     throw error;
   }
-
-  await queue.send({ type: "post", scanId });
   return { scanId, quote };
 }
 

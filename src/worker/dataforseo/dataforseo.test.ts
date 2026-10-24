@@ -9,7 +9,8 @@ import liveFixture from "./fixtures/maps-live-advanced.json";
 import { HttpDataForSeo } from "./http";
 import { MockDataForSeo } from "./mock";
 import { createDataForSeo } from "./index";
-import { buildGrid, formatLocationCoordinate } from "@/shared/grid";
+import { at } from "@/shared/assert";
+import { buildGrid,formatLocationCoordinate } from "@/shared/grid";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -36,7 +37,7 @@ describe("HttpDataForSeo against recorded-shape fixtures (no network)", () => {
     expect(result.billing.costUsd).toBeCloseTo(0.0018, 6);
     expect(result.billing.path).toEqual(["v3", "serp", "google", "maps", "task_post"]);
 
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = at(fetchImpl.mock.calls, 0);
     expect(url).toBe("https://dfs.test/v3/serp/google/maps/task_post");
     expect(init?.headers).toMatchObject({ Authorization: "Basic dGVzdDp0ZXN0" });
     const body = JSON.parse(init!.body as string);
@@ -47,7 +48,7 @@ describe("HttpDataForSeo against recorded-shape fixtures (no network)", () => {
   it("uses priority 2 for the priority queue and the local_finder path for Local Finder", async () => {
     const { client, fetchImpl } = httpWith(json(postFixture));
     await client.postTasks({ keyword: "k", searchType: "local_finder", coordinates: ["1,1,15z"], languageCode: "en", device: "desktop", depth: 20, queue: "priority" });
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = at(fetchImpl.mock.calls, 0);
     expect(url).toBe("https://dfs.test/v3/serp/google/local_finder/task_post");
     expect(JSON.parse(init!.body as string)[0]).toMatchObject({ priority: 2, os: "windows" });
     expect(JSON.parse(init!.body as string)[0]).not.toHaveProperty("search_places");
@@ -120,11 +121,11 @@ describe("HttpDataForSeo against recorded-shape fixtures (no network)", () => {
 describe("MockDataForSeo", () => {
   const center = { lat: 35.7796, lng: -78.6382 };
   const target = { name: "Test Roasters", placeId: "ChIJtest1", domain: "testroasters.example", ...center };
-  const base = { keyword: "coffee shop", searchType: "maps" as const, languageCode: "en", device: "mobile" as const, depth: 20, mockHints: { target } };
+  const base = { keyword: "coffee shop", searchType: "maps" as const, languageCode: "en", device: "mobile" as const, depth: 20 };
 
   it("is pending until the queue delay elapses, then returns results, costing the standard price per task", async () => {
     let now = 1_000_000;
-    const mock = new MockDataForSeo({ now: () => now, delaysMs: { standard: 10_000, priority: 2_000 } });
+    const mock = new MockDataForSeo({ now: () => now, delaysMs: { standard: 10_000, priority: 2_000 }, target });
     const { taskIds, billing } = await mock.postTasks({ ...base, coordinates: [formatLocationCoordinate(center, 15)], queue: "standard" });
     expect(billing.costUsd).toBe(0.0006);
     expect(await mock.getTask("maps", taskIds[0]!)).toEqual({ status: "pending" });
@@ -137,14 +138,14 @@ describe("MockDataForSeo", () => {
 
   it("priority queue is ready sooner than standard", async () => {
     let now = 0;
-    const mock = new MockDataForSeo({ now: () => now, delaysMs: { standard: 10_000, priority: 2_000 } });
-    const { taskIds } = await mock.postTasks({ ...base, coordinates: ["1,1,15z"], queue: "priority" });
+    const mock = new MockDataForSeo({ now: () => now, delaysMs: { standard: 10_000, priority: 2_000 }, target });
+    const { taskIds }= await mock.postTasks({ ...base, coordinates: ["1,1,15z"], queue: "priority" });
     now = 2_000;
     expect((await mock.getTask("maps", taskIds[0]!)).status).toBe("completed");
   });
 
   it("is deterministic and lists the target near its home but loses it far away", async () => {
-    const mock = new MockDataForSeo({ delaysMs: { standard: 0, priority: 0 } });
+    const mock = new MockDataForSeo({ delaysMs: { standard: 0, priority: 0 }, target });
     const grid = buildGrid({ centerLat: center.lat, centerLng: center.lng, size: 13, radiusKm: 10 });
     const coords = grid.map((p) => formatLocationCoordinate(p, 15));
     const { taskIds } = await mock.postTasks({ ...base, coordinates: coords, queue: "standard" });
@@ -165,14 +166,14 @@ describe("MockDataForSeo", () => {
   });
 
   it("serves failure injection and rejects foreign task ids", async () => {
-    const mock = new MockDataForSeo({ delaysMs: { standard: 0, priority: 0 }, shouldFail: (c) => c.startsWith("9,") });
+    const mock = new MockDataForSeo({ delaysMs: { standard: 0, priority: 0 }, shouldFail: (c) => c.startsWith("9,"), target });
     const { taskIds } = await mock.postTasks({ ...base, coordinates: ["9,9,15z"], queue: "standard" });
     expect(await mock.getTask("maps", taskIds[0]!)).toMatchObject({ status: "failed" });
     expect(await mock.getTask("maps", "not-a-mock-id")).toMatchObject({ status: "failed" });
   });
 
   it("live search costs the live price and returns Local Finder items too", async () => {
-    const mock = new MockDataForSeo();
+    const mock = new MockDataForSeo({ target });
     const result = await mock.liveSearch({ ...base, searchType: "local_finder", coordinate: "35.7796,-78.6382,15z" });
     expect(result.billing.costUsd).toBe(0.002);
     expect(result.items.length).toBeGreaterThan(5);
@@ -198,7 +199,7 @@ describe("HttpDataForSeo.lookupPlace", () => {
     const found = await client.lookupPlace("ChIJN1t_tDeuEmsRUsoyG83frY4");
     expect(found?.place).toMatchObject({ name: "Google Sydney", address: "48 Pirrama Rd", lat: -33.86, lng: 151.19, cid: "1028" });
     expect(found?.billing.costUsd).toBeCloseTo(0.0054, 6);
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = at(fetchImpl.mock.calls, 0);
     expect(url).toBe("https://dfs.test/v3/business_data/google/my_business_info/live");
     expect(JSON.parse(init!.body as string)[0]).toMatchObject({ keyword: "place_id:ChIJN1t_tDeuEmsRUsoyG83frY4" });
   });

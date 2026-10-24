@@ -8,6 +8,7 @@ import {
   type AlertSettingsValues,
   type ScanSnapshot,
 } from "@/shared/alerts";
+import { first } from "@/shared/assert";
 import { AppError } from "@/shared/errors";
 import { NEGATIVE_REVIEW_MAX_STARS, evaluateGbpAlerts, type GbpAlertMetrics } from "@/shared/gbp";
 import type { Db } from "./db";
@@ -77,7 +78,7 @@ async function snapshot(db: Db, scan: ScanRow): Promise<ScanSnapshot> {
       .from(scanPoints)
       .where(and(eq(scanPoints.scanId, scan.id), eq(scanPoints.row, c), eq(scanPoints.col, c)));
     centerKnown = point?.status === "completed";
-    centerRank = centerKnown ? point.rank : null;
+    centerRank = point && centerKnown ? point.rank : null;
   }
   return {
     gridSize: scan.gridSize,
@@ -150,8 +151,9 @@ export async function createAlertsForScan(deps: AlertDeps, scanId: string, faile
       })
       .onConflictDoNothing({ target: [alerts.scanId, alerts.kind] })
       .returning({ id: alerts.id });
-    if (inserted.length === 0 || !settings.webhookUrl || !deps.notify) continue;
-    sendWebhook(deps, settings.webhookUrl, inserted[0].id, alertText(label?.business ?? "Tracker", scan.keyword, candidate));
+    const [row] = inserted;
+    if (!row || !settings.webhookUrl || !deps.notify) continue;
+    sendWebhook(deps, settings.webhookUrl, row.id, alertText(label?.business ?? "Tracker", scan.keyword, candidate));
   }
 }
 
@@ -246,8 +248,9 @@ export async function createAlertsForSnapshot(deps: AlertDeps, snapshotId: strin
       })
       .onConflictDoNothing({ target: [alerts.snapshotId, alerts.kind] })
       .returning({ id: alerts.id });
-    if (inserted.length === 0 || !settings.webhookUrl || !deps.notify) continue;
-    sendWebhook(deps, settings.webhookUrl, inserted[0].id, gbpAlertText(business?.name ?? "Business", candidate));
+    const [row] = inserted;
+    if (!row || !settings.webhookUrl || !deps.notify) continue;
+    sendWebhook(deps, settings.webhookUrl, row.id, gbpAlertText(business?.name ?? "Business", candidate));
   }
 }
 
@@ -320,9 +323,10 @@ export async function createJobFailedAlertSafely(deps: AlertDeps, target: Failed
       })
       .onConflictDoNothing()
       .returning({ id: alerts.id });
-    if (inserted.length === 0 || !settings.webhookUrl || !deps.notify) return;
+    const [created] = inserted;
+    if (!created || !settings.webhookUrl || !deps.notify) return;
     const what = target.type === "scan" ? `scan for "${row.keyword}"` : "Google profile refresh";
-    sendWebhook(deps, settings.webhookUrl, inserted[0].id, `:warning: Warning: ${row.label}: the ${what} failed (${message}). Nothing is lost; run it again from the app.`);
+    sendWebhook(deps, settings.webhookUrl, created.id, `:warning: Warning: ${row.label}: the ${what} failed (${message}). Nothing is lost; run it again from the app.`);
   } catch (error) {
     console.error("alert.create-failed", { target, message: error instanceof Error ? error.message : "unknown error" });
   }
@@ -383,10 +387,10 @@ export async function listAlerts(db: Db, workspaceId: string, options: { limit: 
     .where(eq(alerts.workspaceId, workspaceId))
     .orderBy(sql`${alerts.readAt} is not null`, desc(alerts.createdAt))
     .limit(options.limit);
-  const [{ unread }] = await db
+  const { unread } = first(await db
     .select({ unread: sql<number>`count(*)` })
     .from(alerts)
-    .where(and(eq(alerts.workspaceId, workspaceId), isNull(alerts.readAt)));
+    .where(and(eq(alerts.workspaceId, workspaceId), isNull(alerts.readAt))), "unread alert count");
   const items: AlertListItem[] = [];
   for (const { alert, keyword, businessName } of rows) {
     const base = { id: alert.id, severity: alert.severity, businessName, createdAt: alert.createdAt, readAt: alert.readAt };

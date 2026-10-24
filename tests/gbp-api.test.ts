@@ -5,6 +5,7 @@ import type { Env } from "@/worker/env";
 import { alerts, creditLedger, gbpSnapshots } from "@/worker/db/schema";
 import { createHarness, type Harness } from "./helpers/harness";
 import { DAY_MS } from "./helpers/gbp";
+import { at, first as firstRow } from "@/shared/assert";
 
 const origin = "http://localhost:5173";
 const business = { name: "Maple & Ember Coffee Roasters", placeId: "ChIJdemo0000000000000001", domain: "mapleember.example", category: "Coffee shop", lat: 35.7796, lng: -78.6382 };
@@ -19,7 +20,7 @@ function client(h: Harness) {
       {} as Env,
     );
     const set = res.headers.get("set-cookie");
-    if (set) cookie = set.split(";")[0];
+    if (set) cookie = at(set.split(";"), 0);
     const text = await res.text();
     return { status: res.status, json: text ? JSON.parse(text) : null };
   };
@@ -159,7 +160,7 @@ describe("GBP API (local_noauth)", () => {
     const { h, c, biz } = await setup();
     await c.call("POST", `/api/businesses/${biz.id}/gbp/refresh`);
     await h.queue.drain(h.deps);
-    const [first] = await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.businessId, biz.id));
+    const first = firstRow(await h.db.select().from(gbpSnapshots).where(eq(gbpSnapshots.businessId, biz.id)), "the first snapshot");
     await h.db.update(gbpSnapshots).set({ rating: 5.6 }).where(eq(gbpSnapshots.id, first.id));
     h.clock.now += 35 * DAY_MS;
     await c.call("POST", `/api/businesses/${biz.id}/gbp/refresh`);
@@ -237,7 +238,7 @@ describe("GBP API tenant isolation (hosted accounts)", () => {
     const profile = await mcp(h, aKey, "get_gbp_profile", { businessId: biz.id });
     expect(profile.isError).toBeUndefined();
     expect(profile.structuredContent.latest).toMatchObject({ isClaimed: true });
-    expect(profile.content[0].text).toContain("stars from");
+    expect(at(profile.content, 0).text).toContain("stars from");
 
     const list = await mcp(h, aKey, "list_reviews", { businessId: biz.id, limit: 5 });
     expect(list.structuredContent.reviews).toHaveLength(5);
@@ -250,7 +251,7 @@ describe("GBP API tenant isolation (hosted accounts)", () => {
     for (const [tool, args] of [["get_gbp_profile", { businessId: biz.id }], ["list_reviews", { businessId: biz.id }]] as const) {
       const denied = await mcp(h, bKey, tool, args);
       expect(denied.isError).toBe(true);
-      expect(denied.content[0].text).toContain("NOT_FOUND");
+      expect(at(denied.content, 0).text).toContain("NOT_FOUND");
     }
 
     // list_trackers hands out the business id these tools take.
@@ -263,7 +264,7 @@ describe("GBP API tenant isolation (hosted accounts)", () => {
     const { h, a, biz } = await twoWorkspaces();
     await a.call("POST", `/api/businesses/${biz.id}/gbp/refresh`);
     await h.queue.drain(h.deps);
-    const [first] = await h.db.select().from(gbpSnapshots);
+    const first = firstRow(await h.db.select().from(gbpSnapshots), "the first snapshot");
     await h.db.update(gbpSnapshots).set({ rating: 5.6 }).where(eq(gbpSnapshots.id, first.id));
     h.clock.now += 35 * DAY_MS;
     await h.db.update((await import("@/worker/db/schema")).workspaces).set({ creditBalance: 500 });
@@ -274,6 +275,6 @@ describe("GBP API tenant isolation (hosted accounts)", () => {
     const res = await mcp(h, key, "list_alerts");
     const drop = res.structuredContent.alerts.find((x: { kind: string }) => x.kind === "rating_drop");
     expect(drop).toMatchObject({ businessId: biz.id, business: business.name });
-    expect(res.content[0].text).toContain("rating_drop");
+    expect(at(res.content, 0).text).toContain("rating_drop");
   });
 });

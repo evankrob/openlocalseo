@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { at } from "@/shared/assert";
 import { computeMetrics, diffMetrics, summarizeCompetitors } from "./metrics";
 
 describe("computeMetrics", () => {
@@ -43,7 +44,7 @@ describe("summarizeCompetitors", () => {
   });
 
   it("keeps the better rank when a SERP lists a business twice", () => {
-    const [only] = summarizeCompetitors([[biz("a", 5), biz("a", 2)]]);
+    const only = at(summarizeCompetitors([[biz("a", 5), biz("a", 2)]]), 0);
     expect(only.arp).toBe(2);
   });
 });

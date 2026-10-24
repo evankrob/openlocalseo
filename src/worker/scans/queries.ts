@@ -2,7 +2,9 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { summarizeCompetitors, type CompetitorSummary, type ScanMetrics } from "@/shared/metrics";
 import { AppError } from "@/shared/errors";
+import { z } from "zod";
 import type { Db } from "../db";
+import { queryRows } from "../db/raw";
 import { businesses, scanPoints, scanResults, scans, trackers } from "../db/schema";
 
 type ScanRow = typeof scans.$inferSelect;
@@ -98,12 +100,12 @@ export type TrackerSummary = {
 
 /** One row per rank per tracker, via a window function over this workspace's scans. */
 async function latestScanIds(db: Db, workspaceId: string, onlyCompleted: boolean): Promise<string[]> {
-  const rows = await db.all<{ id: string }>(sql`
+  const rows = await queryRows(db, sql`
     SELECT id FROM (
       SELECT id, ROW_NUMBER() OVER (PARTITION BY tracker_id ORDER BY created_at DESC) AS rn
       FROM scans
       WHERE workspace_id = ${workspaceId} ${onlyCompleted ? sql`AND status = 'completed'` : sql``}
-    ) WHERE rn = 1`);
+    ) WHERE rn = 1`, z.object({ id: z.string() }));
   return rows.map((r) => r.id);
 }
 

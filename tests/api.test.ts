@@ -4,6 +4,7 @@ import { createApp, type AppOptions } from "@/worker/app";
 import type { Env } from "@/worker/env";
 import { eq } from "drizzle-orm";
 import { alerts, scans } from "@/worker/db/schema";
+import { at, first, must } from "@/shared/assert";
 import { createHarness, type Harness } from "./helpers/harness";
 
 const origin = "http://localhost:5173";
@@ -24,7 +25,7 @@ function client(h: Harness, env: Partial<Env> = {}, accessKeys?: AppOptions["acc
       env as Env,
     );
     const set = res.headers.get("set-cookie");
-    if (set) cookie = set.split(";")[0];
+    if (set) cookie = at(set.split(";"), 0);
     const text = await res.text();
     return { status: res.status, json: text ? JSON.parse(text) : null, headers: res.headers };
   };
@@ -209,7 +210,7 @@ describe("hosted accounts and tenant isolation", () => {
   it("logout invalidates the session server-side", async () => {
     const a = client(h);
     const signup = await a.call("POST", "/api/auth/signup", { email: "a@example.com", password: "correct horse battery" });
-    const oldCookie = signup.headers.get("set-cookie")!.split(";")[0];
+    const oldCookie = at(must(signup.headers.get("set-cookie"), "set-cookie header").split(";"), 0);
     expect((await a.call("GET", "/api/me", undefined, { cookie: oldCookie })).status).toBe(200);
     await a.call("POST", "/api/auth/logout", undefined, { cookie: oldCookie });
     // replaying the stolen/old cookie must no longer work
@@ -411,7 +412,7 @@ describe("alerts API", () => {
     const tracker = await a.call("POST", "/api/trackers", { businessId: biz.json.id, keyword: "coffee shop", gridSize: 5 });
     const run = await a.call("POST", `/api/trackers/${tracker.json.id}/scans`, {});
     await h.queue.drain(h.deps);
-    const [scanRow] = await h.db.select().from(scans).where(eq(scans.id, run.json.scanId));
+    const scanRow = first(await h.db.select().from(scans).where(eq(scans.id, run.json.scanId)), "the scan row");
     const insert = (id: string, kind: "rank_drop" | "data_problem", createdAt: string) =>
       h.db.insert(alerts).values({ id, workspaceId: scanRow.workspaceId, trackerId: scanRow.trackerId, scanId: scanRow.id, kind, severity: "critical", metrics: sampleMetrics, createdAt });
     await insert("alert-old", "rank_drop", "2026-10-01T00:00:00.000Z");
@@ -419,7 +420,7 @@ describe("alerts API", () => {
     return { h, a, b };
   }
 
-  const readAtOf = async (h: Harness, id: string) => (await h.db.select().from(alerts).where(eq(alerts.id, id)))[0].readAt;
+  const readAtOf = async (h: Harness, id: string) => at(await h.db.select().from(alerts).where(eq(alerts.id, id)), 0).readAt;
 
   it("GET /api/alerts lists unread first with tracker, keyword, metrics and an unread count; respects limit", async () => {
     const { a } = await setup();

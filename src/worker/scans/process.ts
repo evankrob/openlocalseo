@@ -9,10 +9,11 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { computeMetrics, normalizeRank } from "@/shared/metrics";
 import { creditsForProviderUsd, roundUsd } from "@/shared/pricing";
 import { chargeOverage, refundCredits } from "../billing/credits";
+import { billedProviderFor, providerScope } from "../billing/spend";
 import { createAlertsSafely } from "../alerts";
 import type { Db } from "../db";
 import { apiCalls, businesses, scanPoints, scanResults, scans, trackers } from "../db/schema";
-import type { DataForSeoProvider, LiveSearchInput, MapResult, MockHints } from "../dataforseo/types";
+import type { DataForSeoProvider, LiveSearchInput, MapResult, ProviderScope } from "../dataforseo/types";
 import { MAX_TASKS_PER_POST } from "../dataforseo/types";
 import { handleGbpJob } from "../gbp/process";
 import { chunk, newId, nowIso } from "../lib";
@@ -31,6 +32,8 @@ export interface RawStore {
 
 export type ProcessDeps = ScanDeps & {
   provider: DataForSeoProvider;
+  /** Builds a provider for one business (the local simulated market); unset = `provider` for all. */
+  scopeProvider?: (scope: ProviderScope) => DataForSeoProvider;
   raw?: RawStore;
   now?: () => Date;
   /** Address geocoder for new businesses; defaults to Nominatim. */
@@ -78,19 +81,6 @@ async function loadTarget(db: Db, trackerId: string): Promise<BusinessRow | unde
   return row?.business;
 }
 
-function mockHints(provider: DataForSeoProvider, business: BusinessRow): MockHints | undefined {
-  if (provider.mode !== "mock") return undefined;
-  return {
-    target: {
-      name: business.name,
-      placeId: business.placeId,
-      domain: business.domain,
-      lat: business.lat,
-      lng: business.lng,
-    },
-  };
-}
-
 async function recordApiCall(
   deps: ProcessDeps,
   scan: ScanRow,
@@ -118,7 +108,7 @@ async function recordApiCall(
 // ---- post ------------------------------------------------------------------
 
 async function handlePost(deps: ProcessDeps, scanId: string) {
-  const { db, queue, provider } = deps;
+  const { db, queue } = deps;
   // Claim the scan; a redelivered message finds it already claimed.
   const claimed = await db
     .update(scans)
@@ -151,13 +141,12 @@ async function handlePost(deps: ProcessDeps, scanId: string) {
   }
 
   const business = await loadTarget(db, scan.trackerId);
-  const hints = business ? mockHints(provider, business) : undefined;
   const failures: PointUpdate[] = [];
   const posted: PointUpdate[] = [];
 
   for (const group of chunk(points, MAX_TASKS_PER_POST)) {
     try {
-      const result = await provider.postTasks({
+      const result = await billedProviderFor(deps, scan, business && providerScope(business)).postTasks({
         keyword: scan.keyword,
         searchType: scan.searchType,
         coordinates: group.map((p) => pointCoordinate(p, scan.zoom)),
@@ -165,7 +154,6 @@ async function handlePost(deps: ProcessDeps, scanId: string) {
         device: scan.device,
         depth: scan.depth,
         queue: scan.queueMode as "standard" | "priority",
-        mockHints: hints,
       });
       await recordApiCall(deps, scan, result.billing.path, result.billing.costUsd, group.length);
       group.forEach((point, i) => {
@@ -270,7 +258,7 @@ async function handleCollect(deps: ProcessDeps, scanId: string, pointIds: string
 // ---- live -------------------------------------------------------------------
 
 async function handleLive(deps: ProcessDeps, scanId: string, pointIds: string[]) {
-  const { db, provider } = deps;
+  const { db } = deps;
   const scan = await loadScan(db, scanId);
   if (!scan || !isActive(scan)) return;
   const points = await db
@@ -279,7 +267,6 @@ async function handleLive(deps: ProcessDeps, scanId: string, pointIds: string[])
     .where(and(eq(scanPoints.scanId, scanId), inArray(scanPoints.id, pointIds), eq(scanPoints.status, "pending")));
   if (points.length === 0) return;
   const business = (await loadTarget(db, scan.trackerId))!;
-  const hints = mockHints(provider, business);
 
   let costUsd = 0;
   let billed = 0;
@@ -294,10 +281,9 @@ async function handleLive(deps: ProcessDeps, scanId: string, pointIds: string[])
         languageCode: scan.languageCode,
         device: scan.device,
         depth: scan.depth,
-        mockHints: hints,
       };
       try {
-        const result = await provider.liveSearch(input);
+        const result = await billedProviderFor(deps, scan, providerScope(business)).liveSearch(input);
         costUsd += result.billing.costUsd;
         billed++;
         const { rank, rows } = interpretResults(point, result.items, business);
@@ -405,8 +391,9 @@ async function finalizeIfDone(deps: ProcessDeps, scanId: string) {
     })
     .where(and(eq(scans.id, scanId), inArray(scans.status, ["posting", "polling"])))
     .returning({ id: scans.id, costUsd: scans.costUsd });
-  if (won.length === 0) return;
-  await settleCredits(deps, scan, won[0].costUsd);
+  const [winner] = won;
+  if (!winner) return;
+  await settleCredits(deps, scan, winner.costUsd);
   // Inside the same once-only step as settlement; never fails the scan.
   if (succeeded) await createAlertsSafely(deps, scanId, failedCount);
 }
@@ -437,12 +424,13 @@ export async function reapStaleScans(deps: ProcessDeps, olderThanSeconds = 6 * 3
       .set({ status: "failed", error: "Scan timed out and was stopped", completedAt: nowIso(deps.now?.()) })
       .where(and(eq(scans.id, scan.id), inArray(scans.status, ["queued", "posting", "polling"])))
       .returning({ costUsd: scans.costUsd });
-    if (won.length === 0) continue;
+    const [winner] = won;
+    if (!winner) continue;
     await deps.db
       .update(scanPoints)
       .set({ status: "failed", error: "Scan timed out" })
       .where(and(eq(scanPoints.scanId, scan.id), inArray(scanPoints.status, ["pending", "posted"])));
-    await settleCredits(deps, scan, won[0].costUsd);
+    await settleCredits(deps, scan, winner.costUsd);
     reaped++;
   }
   return reaped;

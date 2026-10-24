@@ -1,5 +1,7 @@
 import { and, eq, gt, sql } from "drizzle-orm";
+import { first, must } from "@/shared/assert";
 import { AppError } from "@/shared/errors";
+import { asWorkspaceId, type WorkspaceId } from "@/shared/ids";
 import type { Db } from "../db";
 import { memberships, sessions, users, workspaces } from "../db/schema";
 import { grantCredits } from "../billing/credits";
@@ -11,7 +13,7 @@ export type Role = "owner" | "admin" | "member";
 export type AuthContext = {
   userId: string;
   email: string;
-  workspaceId: string;
+  workspaceId: WorkspaceId;
   role: Role;
   via: "session" | "access" | "noauth" | "apikey";
   /** Set when `via` is "apikey"; the per-key rate limit counts on it. */
@@ -65,7 +67,7 @@ async function getOrCreateUser(db: Db, email: string, name?: string | null) {
   const id = newId();
   await db.insert(users).values({ id, email, name: name ?? null }).onConflictDoNothing();
   const [created] = await db.select().from(users).where(eq(users.email, email));
-  return created;
+  return must(created, "user exists after insert");
 }
 
 /**
@@ -76,19 +78,19 @@ async function getOrCreateUser(db: Db, email: string, name?: string | null) {
 export async function ensureSharedWorkspaceMember(db: Db, email: string, firstRole: Role = "owner"): Promise<AuthContext> {
   const user = await getOrCreateUser(db, email);
   await db.insert(workspaces).values({ id: DEFAULT_WORKSPACE_ID, name: "My workspace", slug: "default" }).onConflictDoNothing();
-  const [{ n }] = await db
+  const { n } = first(await db
     .select({ n: sql<number>`count(*)` })
     .from(memberships)
-    .where(eq(memberships.workspaceId, DEFAULT_WORKSPACE_ID));
+    .where(eq(memberships.workspaceId, DEFAULT_WORKSPACE_ID)), "membership count");
   await db
     .insert(memberships)
     .values({ workspaceId: DEFAULT_WORKSPACE_ID, userId: user.id, role: Number(n) === 0 ? firstRole : "member" })
     .onConflictDoNothing();
-  const [member] = await db
+  const member = first(await db
     .select({ role: memberships.role })
     .from(memberships)
-    .where(and(eq(memberships.workspaceId, DEFAULT_WORKSPACE_ID), eq(memberships.userId, user.id)));
-  return { userId: user.id, email, workspaceId: DEFAULT_WORKSPACE_ID, role: member.role, via: "noauth" };
+    .where(and(eq(memberships.workspaceId, DEFAULT_WORKSPACE_ID), eq(memberships.userId, user.id))), "membership just inserted");
+  return { userId: user.id, email, workspaceId: asWorkspaceId(DEFAULT_WORKSPACE_ID), role: member.role, via: "noauth" };
 }
 
 // ---- hosted: email + password ------------------------------------------------

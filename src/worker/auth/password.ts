@@ -23,6 +23,6 @@ export async function verifyPassword(password: string, stored: string): Promise<
   if (actual.length !== expected.length) return false;
   // Constant-time comparison.
   let diff = 0;
-  for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
+  for (let i = 0; i < actual.length; i++) diff |= (actual[i] ?? 0) ^ (expected[i] ?? 0); // lengths are equal, so both exist
   return diff === 0;
 }

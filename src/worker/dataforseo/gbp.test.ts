@@ -7,6 +7,7 @@ import { HttpDataForSeo } from "./http";
 import { MockDataForSeo } from "./mock";
 import { parseBusinessProfile, parseReviewItems, reviewsTaskToOutcome } from "./parse";
 import type { TaskLike } from "./envelope";
+import { at } from "@/shared/assert";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -21,7 +22,7 @@ const PLACE = "ChIJi_IC309ZrIkRH3MyjF43V84";
 
 describe("business profile parsing (recorded fixture)", () => {
   it("reads rating, review count, distribution, claimed, photos, categories, phone and domain", () => {
-    const items = profileFixture.tasks[0].result[0].items;
+    const items = at(at(profileFixture.tasks, 0).result, 0).items;
     expect(parseBusinessProfile(items)).toEqual({
       placeId: PLACE,
       name: "Carolina Wildlife Removal",
@@ -73,8 +74,8 @@ describe("reviews parsing (recorded fixture)", () => {
       profileName: "Reviewer 1",
       ownerAnsweredAt: "2026-10-19T16:25:54.000Z",
     });
-    expect(outcome.reviews[0].ownerAnswer).toContain("warranties");
-    expect(outcome.reviews[2].text).toBeNull();
+    expect(at(outcome.reviews, 0).ownerAnswer).toContain("warranties");
+    expect(at(outcome.reviews, 2).text).toBeNull();
     for (const review of outcome.reviews) {
       expect(Object.keys(review).sort()).toEqual(["ownerAnswer", "ownerAnsweredAt", "profileName", "publishedAt", "rating", "reviewId", "text"]);
     }
@@ -106,7 +107,7 @@ describe("HttpDataForSeo GBP calls (stubbed fetch, no network)", () => {
     const result = await client.getBusinessProfile({ placeId: PLACE });
     expect(result.profile).toMatchObject({ rating: 4.7, reviewCount: 197, isClaimed: true, totalPhotos: 44 });
     expect(result.billing).toEqual({ path: ["v3", "business_data", "google", "my_business_info", "live"], costUsd: 0.0054 });
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = at(fetchImpl.mock.calls, 0);
     expect(url).toBe("https://dfs.test/v3/business_data/google/my_business_info/live");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init!.body as string)).toEqual([{ keyword: `place_id:${PLACE}`, location_code: 2840, language_code: "en" }]);
@@ -126,7 +127,7 @@ describe("HttpDataForSeo GBP calls (stubbed fetch, no network)", () => {
     const posted = await client.postReviewsTask({ placeId: PLACE, depth: 20 });
     expect(posted.taskId).toBe("10241625-1468-0298-0000-2ea770d98c71");
     expect(posted.billing).toEqual({ path: ["v3", "business_data", "google", "reviews", "task_post"], costUsd: 0.0015 });
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = at(fetchImpl.mock.calls, 0);
     expect(url).toBe("https://dfs.test/v3/business_data/google/reviews/task_post");
     expect(JSON.parse(init!.body as string)).toEqual([
       { keyword: `place_id:${PLACE}`, location_code: 2840, language_code: "en", depth: 20, sort_by: "newest" },
@@ -150,7 +151,7 @@ describe("HttpDataForSeo GBP calls (stubbed fetch, no network)", () => {
     expect(await client.getReviewsTask("abc 1")).toEqual({ status: "pending" });
     const done = await client.getReviewsTask("abc 1");
     expect(done.status === "completed" && done.reviews).toHaveLength(4);
-    const [url, init] = fetchImpl.mock.calls[0];
+    const [url, init] = at(fetchImpl.mock.calls, 0);
     expect(url).toBe("https://dfs.test/v3/business_data/google/reviews/task_get/abc%201");
     expect(init?.method).toBe("GET");
   });
@@ -159,11 +160,12 @@ describe("HttpDataForSeo GBP calls (stubbed fetch, no network)", () => {
 describe("MockDataForSeo GBP calls", () => {
   const clock = { now: Date.UTC(2026, 9, 14, 12) };
   const mock = () => new MockDataForSeo({ now: () => clock.now, delaysMs: { standard: 10_000, priority: 1000 } });
-  const hints = { target: { name: "Maple & Ember", placeId: "ChIJmock1", domain: "m.example", category: "Coffee shop", lat: 35.78, lng: -78.64 } };
+  const target = { name: "Maple & Ember", placeId: "ChIJmock1", domain: "m.example", category: "Coffee shop", lat: 35.78, lng: -78.64 };
+  const mockTargeted = () => new MockDataForSeo({ now: () => clock.now, delaysMs: { standard: 10_000, priority: 1000 }, target });
 
   it("serves a deterministic profile that matches the mock market's numbers for a tracked business", async () => {
-    const a = await mock().getBusinessProfile({ placeId: "ChIJmock1", mockHints: hints });
-    const b = await mock().getBusinessProfile({ placeId: "ChIJmock1", mockHints: hints });
+    const a = await mockTargeted().getBusinessProfile({ placeId: "ChIJmock1" });
+    const b = await mockTargeted().getBusinessProfile({ placeId: "ChIJmock1" });
     expect(a).toEqual(b);
     expect(a.profile).toMatchObject({ name: "Maple & Ember", category: "Coffee shop", isClaimed: true, domain: "m.example" });
     expect(a.profile!.reviewCount).toBeGreaterThan(412);
@@ -178,8 +180,8 @@ describe("MockDataForSeo GBP calls", () => {
   });
 
   it("bills the reviews post per 10 reviews and is pending until the queue delay passes", async () => {
-    const m = mock();
-    const posted = await m.postReviewsTask({ placeId: "ChIJmock1", depth: 20, mockHints: hints });
+    const m = mockTargeted();
+    const posted = await m.postReviewsTask({ placeId: "ChIJmock1", depth: 20 });
     expect(posted.billing).toEqual({ path: ["v3", "business_data", "google", "reviews", "task_post"], costUsd: 0.0015 });
     expect((await m.postReviewsTask({ placeId: "ChIJmock1", depth: 10 })).billing.costUsd).toBe(0.00075);
     expect(await m.getReviewsTask(posted.taskId)).toEqual({ status: "pending" });
@@ -204,7 +206,7 @@ describe("MockDataForSeo GBP calls", () => {
     const b = await m.getReviewsTask(second.taskId);
     if (a.status !== "completed" || b.status !== "completed") throw new Error("expected completed");
     const ids = new Set(b.reviews.map((r) => r.reviewId));
-    expect(b.reviews[0].publishedAt > a.reviews[0].publishedAt).toBe(true);
+    expect(at(b.reviews, 0).publishedAt > at(a.reviews, 0).publishedAt).toBe(true);
     const sharedWithBoth = a.reviews.filter((r) => ids.has(r.reviewId));
     for (const r of sharedWithBoth) expect(b.reviews.find((x) => x.reviewId === r.reviewId)?.text).toBe(r.text);
     expect(b.reviewCount!).toBeGreaterThan(a.reviewCount!);

@@ -9,7 +9,8 @@ import { UNANSWERED_WINDOW, reviewVelocity } from "@/shared/gbp";
 import { GBP_REVIEWS_DEPTH, creditsForProviderUsd, roundUsd } from "@/shared/pricing";
 import { createGbpAlertsSafely } from "../alerts";
 import { chargeOverage, refundCredits } from "../billing/credits";
-import type { MockHints, ReviewsOutcome } from "../dataforseo/types";
+import { billedProviderFor, providerScope } from "../billing/spend";
+import type { BilledProvider, ReviewsOutcome } from "../dataforseo/types";
 import { apiCalls, businesses, gbpSnapshots, reviews } from "../db/schema";
 import { newId, nowIso } from "../lib";
 import type { GbpJob } from "../scans/jobs";
@@ -43,20 +44,6 @@ async function loadBusiness(deps: ProcessDeps, snapshot: SnapshotRow): Promise<B
   return row;
 }
 
-function mockHints(deps: ProcessDeps, business: BusinessRow): MockHints | undefined {
-  if (deps.provider.mode !== "mock") return undefined;
-  return {
-    target: {
-      name: business.name,
-      placeId: business.placeId,
-      domain: business.domain,
-      category: business.category,
-      lat: business.lat,
-      lng: business.lng,
-    },
-  };
-}
-
 /** Records one billed call in api_calls and adds it to the snapshot's cost. */
 async function recordCall(deps: ProcessDeps, snapshot: SnapshotRow, path: string[], costUsd: number) {
   await deps.db.insert(apiCalls).values({
@@ -86,7 +73,7 @@ const messageOf = (error: unknown, fallback: string) => (error instanceof Error 
 // ---- snapshot: profile + reviews post -------------------------------------------
 
 async function handleSnapshot(deps: ProcessDeps, snapshotId: string) {
-  const { db, queue, provider, config } = deps;
+  const { db, queue, config } = deps;
   // Claim the snapshot; a redelivered message finds it already claimed.
   const claimed = await db
     .update(gbpSnapshots)
@@ -109,11 +96,12 @@ async function handleSnapshot(deps: ProcessDeps, snapshotId: string) {
     await failSnapshot(deps, snapshotId, "Business not found or has no Google place ID");
     return;
   }
-  const hints = mockHints(deps, business);
 
+  let billed: BilledProvider;
   let profile;
   try {
-    profile = await provider.getBusinessProfile({ placeId: business.placeId, mockHints: hints });
+    billed = billedProviderFor(deps, snapshot, providerScope(business));
+    profile = await billed.getBusinessProfile({ placeId: business.placeId });
   } catch (error) {
     await recordChargedFailure(deps, snapshot, error);
     console.warn("gbp.profile-failed", { snapshotId, message: messageOf(error, "profile lookup failed") });
@@ -143,7 +131,7 @@ async function handleSnapshot(deps: ProcessDeps, snapshotId: string) {
 
   let posted;
   try {
-    posted = await provider.postReviewsTask({ placeId: business.placeId, depth: GBP_REVIEWS_DEPTH, mockHints: hints });
+    posted = await billed.postReviewsTask({ placeId: business.placeId, depth: GBP_REVIEWS_DEPTH });
   } catch (error) {
     // Never replayed: a failed post may still have been billed upstream.
     await recordChargedFailure(deps, snapshot, error);
@@ -244,8 +232,9 @@ async function completeSnapshot(deps: ProcessDeps, snapshot: SnapshotRow, outcom
     })
     .where(and(eq(gbpSnapshots.id, snapshot.id), eq(gbpSnapshots.status, "running")))
     .returning({ costUsd: gbpSnapshots.costUsd });
-  if (won.length === 0) return;
-  await settleCredits(deps, snapshot, won[0].costUsd);
+  const [winner] = won;
+  if (!winner) return;
+  await settleCredits(deps, snapshot, winner.costUsd);
   // Inside the same once-only step as settlement; never fails the snapshot.
   await createGbpAlertsSafely(deps, snapshot.id);
 }
@@ -257,9 +246,10 @@ export async function failSnapshot(deps: ProcessDeps, snapshotId: string, error:
     .set({ status: "failed", error, completedAt: nowIso(deps.now?.()) })
     .where(and(eq(gbpSnapshots.id, snapshotId), inArray(gbpSnapshots.status, [...ACTIVE])))
     .returning({ costUsd: gbpSnapshots.costUsd });
-  if (won.length === 0) return false;
+  const [winner] = won;
+  if (!winner) return false;
   const snapshot = (await loadSnapshot(deps, snapshotId))!;
-  await settleCredits(deps, snapshot, won[0].costUsd);
+  await settleCredits(deps, snapshot, winner.costUsd);
   return true;
 }
 

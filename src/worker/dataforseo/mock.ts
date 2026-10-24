@@ -12,8 +12,9 @@ import pendingTemplate from "./fixtures/maps-task-get-pending.json";
 import failedTemplate from "./fixtures/maps-task-get-failed.json";
 import profileTemplate from "./fixtures/business-info-live.json";
 import reviewsTemplate from "./fixtures/reviews-task-get-ready.json";
+import { must } from "@/shared/assert";
 import { GBP_PROFILE_PRICE_USD, SERP_PRICE_USD, estimateGbpReviewsCostUsd, roundUsd, type QueueMode } from "@/shared/pricing";
-import { buildWorld, rankWorldAt, type WorldBusiness } from "./world";
+import { buildWorld, rankWorldAt, type MockHints, type MockTarget, type WorldBusiness } from "./world";
 import { buildTaskBilling, type TaskLike } from "./envelope";
 import { dfsTimestamp, profileFacts, reviewTimeline } from "./gbp-world";
 import { parseBusinessProfile, parseMapItems, reviewsTaskToOutcome, taskToOutcome } from "./parse";
@@ -24,7 +25,7 @@ import type {
   Device,
   LiveSearchInput,
   LiveSearchResult,
-  MockHints,
+  BilledProvider,
   PlaceLookupResult,
   PostTasksInput,
   PostTasksResult,
@@ -32,11 +33,14 @@ import type {
   ReviewsTaskInput,
   ReviewsTaskPosted,
   SearchType,
+  SpendAuthorization,
   TaskOutcome,
 } from "./types";
 
 export type MockOptions = {
   now?: () => number;
+  /** The business the simulated market is built around, so it shows up in results. */
+  target?: MockTarget;
   /** Simulated time until a queued task is ready, per queue. */
   delaysMs?: { standard: number; priority: number };
   /** Make specific coordinates fail, to exercise error handling. */
@@ -69,6 +73,7 @@ export class MockDataForSeo implements DataForSeoProvider {
   private readonly now: () => number;
   private readonly delays: { standard: number; priority: number };
   private readonly shouldFail: (coordinate: string) => boolean;
+  private readonly hints: MockHints | undefined;
 
   /** Deterministic fake place lookup: ids containing "unknown" resolve to nothing. */
   async lookupPlace(placeId: string): Promise<PlaceLookupResult | null> {
@@ -85,14 +90,20 @@ export class MockDataForSeo implements DataForSeoProvider {
     this.now = options.now ?? Date.now;
     this.delays = options.delaysMs ?? DEFAULT_DELAYS;
     this.shouldFail = options.shouldFail ?? (() => false);
+    this.hints = options.target ? { target: options.target } : undefined;
+  }
+
+  /** The authorization is a compile-time gate (see `billing/spend.ts`); nothing to check at runtime. */
+  billed(_authorization: SpendAuthorization): BilledProvider {
+    return this;
   }
 
   async getBusinessProfile(input: BusinessProfileInput): Promise<BusinessProfileResult> {
     if (input.placeId.includes("unknown")) {
       return { profile: null, billing: { path: ["v3", "business_data", "google", "my_business_info", "live"], costUsd: GBP_PROFILE_PRICE_USD } };
     }
-    const facts = profileFacts(input.placeId, this.now(), input.mockHints);
-    const target = input.mockHints?.target;
+    const facts = profileFacts(input.placeId, this.now(), this.hints);
+    const target = this.hints?.target;
     const task = structuredClone(profileTemplate.tasks[0]) as unknown as TaskLike;
     const result = task.result![0] as { items: Array<Record<string, unknown>> };
     result.items = [
@@ -114,7 +125,7 @@ export class MockDataForSeo implements DataForSeoProvider {
   }
 
   async postReviewsTask(input: ReviewsTaskInput): Promise<ReviewsTaskPosted> {
-    const payload: ReviewsPayload = { p: input.placeId, d: input.depth, at: this.now(), h: input.mockHints };
+    const payload: ReviewsPayload = { p: input.placeId, d: input.depth, at: this.now(), h: this.hints };
     return {
       taskId: encodePayload("mockrev", payload),
       billing: {
@@ -169,7 +180,7 @@ export class MockDataForSeo implements DataForSeoProvider {
         dp: input.depth,
         q: input.queue,
         at,
-        h: input.mockHints,
+        h: this.hints,
       }),
     );
     return {
@@ -203,7 +214,7 @@ export class MockDataForSeo implements DataForSeoProvider {
       dp: input.depth,
       q: "standard",
       at: this.now(),
-      h: input.mockHints,
+      h: this.hints,
     };
     const task = buildTask(payload, "live");
     task.cost = SERP_PRICE_USD.live;
@@ -213,11 +224,12 @@ export class MockDataForSeo implements DataForSeoProvider {
 
 function buildTask(payload: TaskPayload, fn: "task_get" | "live"): TaskLike {
   const template = payload.t === "maps" ? readyTemplate : finderTemplate;
-  const task = structuredClone(template.tasks[0]) as TaskLike;
+  const templateTask = must(template.tasks[0], "mock template has a task");
+  const task = structuredClone(templateTask) as TaskLike;
   const [lat, lng] = parseCoordinate(payload.c);
   const world = buildWorld(payload.k, worldCenter(payload, lat, lng), payload.h);
   const ranked = rankWorldAt(world, { lat, lng }, payload.k, payload.dp);
-  const itemTemplate = (template.tasks[0].result[0].items.find((i) => i.type !== "maps_paid_item") ?? {}) as Record<string, unknown>;
+  const itemTemplate = (must(templateTask.result[0], "mock template has a result").items.find((i) => i.type !== "maps_paid_item") ?? {}) as Record<string, unknown>;
   const items = ranked.map((b, index) => toItem(itemTemplate, b, index + 1));
   const result = task.result![0] as Record<string, unknown>;
   result.keyword = payload.k;
@@ -254,7 +266,7 @@ function toItem(base: Record<string, unknown>, b: WorldBusiness, rank: number): 
 
 function parseCoordinate(coordinate: string): [number, number] {
   const [lat, lng] = coordinate.split(",").map(Number);
-  return [lat, lng];
+  return [must(lat, "coordinate latitude"), must(lng, "coordinate longitude")];
 }
 
 function encodePayload(prefix: string, payload: object): string {

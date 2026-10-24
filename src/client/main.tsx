@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./styles/app.css";
+import { AlertsPage } from "./pages/Alerts";
 import { AuthPage } from "./pages/Auth";
 import { Businesses } from "./pages/Businesses";
 import { Dashboard } from "./pages/Dashboard";
@@ -29,7 +30,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="trackers/new" element={<TrackerNew />} />
             <Route path="trackers/:id" element={<TrackerDetail />} />
             <Route path="scans/:id" element={<ScanPage />} />
-            <Route path="businesses" element={<Businesses />} />
+            <Route path="alerts" element={<AlertsPage />} />
+            <Route path="businesses"element={<Businesses />} />
             <Route path="usage" element={<UsagePage />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<p>Page not found.</p>} />

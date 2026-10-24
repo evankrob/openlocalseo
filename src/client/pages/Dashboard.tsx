@@ -4,6 +4,7 @@ import { get } from "../lib/api";
 import { fmtDate, fmtNum, fmtPct } from "../lib/format";
 import type { TrackerSummary } from "../lib/types";
 import { Badge, Button, Card, EmptyState, ErrorNote, Spinner } from "../components/ui";
+import { useAlerts } from "./Alerts";
 import { PageHeader } from "./shell";
 
 export const statusTone = (status: string) =>
@@ -15,6 +16,7 @@ export function Dashboard() {
     queryFn: () => get<TrackerSummary[]>("/trackers"),
     refetchInterval: (query) => (query.state.data?.some((t) => t.latestScan && ["queued", "posting", "polling"].includes(t.latestScan.status)) ? 4000 : false),
   });
+  const unread = useAlerts().data?.unreadCount ?? 0;
   return (
     <>
       <PageHeader
@@ -22,6 +24,12 @@ export function Dashboard() {
         description="Where each client ranks in Google Maps, point by point across their service area."
         actions={<Link to="/trackers/new"><Button>New grid scan</Button></Link>}
       />
+      {unread > 0 && (
+        <Link to="/alerts" className="block rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm hover:bg-destructive/15">
+          <Badge tone="danger" className="mr-2">{unread}</Badge>
+          {unread === 1 ? "unread alert" : "unread alerts"}: rankings dropped or a scan had data problems. Review them.
+        </Link>
+      )}
       <ErrorNote error={q.error} />
       {q.isLoading && <Spinner />}
       {q.data?.length === 0 && (

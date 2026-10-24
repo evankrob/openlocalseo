@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Building2, KeyRound, LayoutGrid, LogOut, MapPin, PlusCircle } from "lucide-react";
+import { BarChart3, Bell, Building2, KeyRound, LayoutGrid, LogOut, MapPin, PlusCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
 import { ApiError, get, post, setWorkspaceId } from "../lib/api";
 import { cn } from "../lib/cn";
 import type { Me } from "../lib/types";
 import { Badge, Spinner } from "../components/ui";
+import { useAlerts } from "./Alerts";
 
 export function useMe() {
   return useQuery({
@@ -18,6 +19,7 @@ export function useMe() {
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/trackers/new", label: "New grid scan", icon: PlusCircle },
+  { to: "/alerts", label: "Alerts", icon: Bell, badge: true },
   { to: "/businesses", label: "Businesses", icon: Building2 },
   { to: "/usage", label: "Usage & cost", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: KeyRound },
@@ -27,6 +29,9 @@ export function Shell() {
   const me = useMe();
   const qc = useQueryClient();
   const location = useLocation();
+  // Only polls once the account has loaded (a 401 redirects to login first).
+  const alerts = useAlerts(Boolean(me.data));
+  const unread = alerts.data?.unreadCount ?? 0;
 
   if (me.isLoading) return <div className="grid h-full place-items-center"><Spinner className="size-6" /></div>;
   if (me.error instanceof ApiError && me.error.status === 401) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
@@ -49,7 +54,7 @@ export function Shell() {
           <MapPin className="size-5 text-primary" /> OpenLocalSEO
         </Link>
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2 md:flex-col md:pb-0">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
+          {NAV.map(({ to, label, icon: Icon, end, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -57,6 +62,7 @@ export function Shell() {
               className={({ isActive }) => cn("flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm hover:bg-foreground/5", isActive && "bg-foreground/10 font-medium")}
             >
               <Icon className="size-4" /> {label}
+              {badge && unread > 0 && <Badge tone="danger" className="ml-auto" aria-label={`${unread} unread`}>{unread}</Badge>}
             </NavLink>
           ))}
         </nav>

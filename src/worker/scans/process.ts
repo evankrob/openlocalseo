@@ -9,11 +9,13 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { computeMetrics, normalizeRank } from "@/shared/metrics";
 import { creditsForProviderUsd, roundUsd } from "@/shared/pricing";
 import { chargeOverage, refundCredits } from "../billing/credits";
+import { createAlertsSafely } from "../alerts";
 import type { Db } from "../db";
 import { apiCalls, businesses, scanPoints, scanResults, scans, trackers } from "../db/schema";
 import type { DataForSeoProvider, LiveSearchInput, MapResult, MockHints } from "../dataforseo/types";
 import { MAX_TASKS_PER_POST } from "../dataforseo/types";
 import { chunk, newId, nowIso } from "../lib";
+import type { WebhookSender } from "../notify";
 import { COLLECT_CHUNK, LIVE_CHUNK, type ScanJob } from "./jobs";
 import { businessKey, isTargetBusiness } from "./match";
 import { pointCoordinate, type ScanDeps } from "./service";
@@ -29,6 +31,10 @@ export type ProcessDeps = ScanDeps & {
   now?: () => Date;
   /** Address geocoder for new businesses; defaults to Nominatim. */
   geocode?: Geocoder;
+  /** Alert webhook sender. Unset (tests, local dev) = no outbound notifications. */
+  notify?: WebhookSender;
+  /** Workers ExecutionContext.waitUntil, to let a notification outlive the job. */
+  waitUntil?: (promise: Promise<unknown>) => void;
 };
 
 type ScanRow = typeof scans.$inferSelect;
@@ -392,6 +398,8 @@ async function finalizeIfDone(deps: ProcessDeps, scanId: string) {
     .returning({ id: scans.id, costUsd: scans.costUsd });
   if (won.length === 0) return;
   await settleCredits(deps, scan, won[0].costUsd);
+  // Inside the same once-only step as settlement; never fails the scan.
+  if (succeeded) await createAlertsSafely(deps, scanId, failedCount);
 }
 
 /** Bills the real cost against the hold: refund the unused part, or charge the overage. */

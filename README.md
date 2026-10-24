@@ -11,7 +11,8 @@ An open-source **local SEO map-grid rank tracker**: see where a business shows u
 - **History**: scan list, ATRP/SoLV trend charts, side-by-side comparison of two scans.
 - **Monthly scheduled scans** via Cron.
 - **White-label client reports**: revocable public links with your logo, colour and footer; print to PDF.
-- **MCP server** (`run_scan`, `list_scans`, `get_scan`, `list_trackers`) for AI assistants.
+- **Rank-drop alerts**: each finished scan is compared with the previous one; a meaningful drop raises an alert in the app, over MCP, and optionally to a Slack-compatible webhook.
+- **MCP server** (`run_scan`, `list_scans`, `get_scan`, `list_trackers`, `list_alerts`) for AI assistants.
 - **Bring your own key** (you pay DataForSEO directly) or **hosted cost-plus billing** (credits, DataForSEO cost + 28%). Per-call cost is recorded either way.
 
 > **Safe by default.** Out of the box the app uses a **mock DataForSEO provider** with realistic fixtures: no API key, no network calls, no cost. Real scanning is an explicit opt-in (`DATAFORSEO_MODE=live`).
@@ -150,6 +151,22 @@ claude mcp add --transport http openlocalseo http://localhost:5173/mcp \
 | `run_scan` | starts a scan; **requires `maxCostUsd`**, the amount the user approved, and refuses if the estimate is higher |
 | `list_scans` | recent scans with ARP / ATRP / SoLV |
 | `get_scan` | status, metrics, a rank grid (rows north to south) and top competitors |
+| `list_alerts` | rank-drop alerts with before/after metrics, unread first |
+
+## Alerts
+
+When a scan completes, it is compared with the tracker's previous completed scan, **only if both used the same grid size, radius, zoom, search type and keyword** (so editing a tracker never causes a false alarm). One `rank_drop` alert is raised if any of these hold (defaults, editable per workspace under **Settings -> Rank-drop alerts**):
+
+- ATRP is worse by 2.0 or more;
+- SoLV is down by 15 percentage points or more;
+- found points are down by 25% of the total points or more;
+- the business was in the top 3 at the center point and no longer is (odd grid sizes only).
+
+It is `critical` when ATRP is worse by 5 or SoLV is down by 30 points, otherwise `warning`. A scan that completes with more than half of its points failed raises a separate `data_problem` alert instead (its metrics are not a reliable rank signal). Alerts are unique per scan and kind, so queue redelivery cannot duplicate them, and a failure while evaluating them is logged and never fails the scan. Alerts can be switched off per workspace.
+
+Alerts show up under **Alerts** (with an unread count in the sidebar and on the dashboard) and via `GET /api/alerts`, `POST /api/alerts/:id/read`, `POST /api/alerts/read-all`, `GET/PUT /api/alert-settings`.
+
+**Webhook (optional, off by default).** Set a Slack-compatible incoming webhook URL (https only) in the same settings card; each new alert sends one `POST {"text": "..."}` with a 5 second timeout. It is sent once, never retried, and a failure never affects the scan. Only workspace admins can see or change the URL.
 
 ## Mocked vs real
 

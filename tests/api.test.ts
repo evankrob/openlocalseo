@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import { createApp, type AppOptions } from "@/worker/app";
 import type { Env } from "@/worker/env";
+import { eq } from "drizzle-orm";
+import { alerts, scans } from "@/worker/db/schema";
 import { createHarness, type Harness } from "./helpers/harness";
 
 const origin = "http://localhost:5173";
@@ -329,7 +331,7 @@ describe("MCP server", () => {
     expect((await mcp(h, "olseo_wrong", "tools/list")).status).toBe(401);
 
     const list = await mcp(h, key, "tools/list");
-    expect(list.json.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["get_scan", "list_scans", "list_trackers", "run_scan"]);
+    expect(list.json.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["get_scan", "list_alerts", "list_scans", "list_trackers", "run_scan"]);
 
     const trackers = await mcp(h, key, "tools/call", { name: "list_trackers", arguments: {} });
     expect(trackers.json.result.structuredContent.trackers[0].trackerId).toBe(tracker.json.id);
@@ -388,5 +390,150 @@ describe("hosted top-ups", () => {
     const ok = await admin.call("POST", "/api/admin/credits", { workspaceId: wsId, credits: 500 }, { authorization: "Bearer s3cret-admin-token" });
     expect(ok.status).toBe(200);
     expect((await a.call("GET", "/api/usage")).json.credits.balance).toBe(500);
+  });
+});
+
+describe("alerts API", () => {
+  const sampleMetrics = JSON.stringify({
+    before: { atrp: 2, solv: 60, foundPoints: 24, totalPoints: 25, centerRank: 1 },
+    after: { atrp: 9, solv: 10, foundPoints: 10, totalPoints: 25, centerRank: null },
+    reasons: ["atrp", "solv"],
+  });
+
+  /** Two hosted workspaces; A owns a finished scan with two alerts. */
+  async function setup() {
+    const h = await createHarness({ env: { AUTH_MODE: "hosted" } });
+    const a = client(h);
+    const b = client(h);
+    await a.call("POST", "/api/auth/signup", { email: "a@example.com", password: "correct horse battery" });
+    await b.call("POST", "/api/auth/signup", { email: "b@example.com", password: "another long password" });
+    const biz = await a.call("POST", "/api/businesses", business);
+    const tracker = await a.call("POST", "/api/trackers", { businessId: biz.json.id, keyword: "coffee shop", gridSize: 5 });
+    const run = await a.call("POST", `/api/trackers/${tracker.json.id}/scans`, {});
+    await h.queue.drain(h.deps);
+    const [scanRow] = await h.db.select().from(scans).where(eq(scans.id, run.json.scanId));
+    const insert = (id: string, kind: "rank_drop" | "data_problem", createdAt: string) =>
+      h.db.insert(alerts).values({ id, workspaceId: scanRow.workspaceId, trackerId: scanRow.trackerId, scanId: scanRow.id, kind, severity: "critical", metrics: sampleMetrics, createdAt });
+    await insert("alert-old", "rank_drop", "2026-10-01T00:00:00.000Z");
+    await insert("alert-new", "data_problem", "2026-10-02T00:00:00.000Z");
+    return { h, a, b };
+  }
+
+  const readAtOf = async (h: Harness, id: string) => (await h.db.select().from(alerts).where(eq(alerts.id, id)))[0].readAt;
+
+  it("GET /api/alerts lists unread first with tracker, keyword, metrics and an unread count; respects limit", async () => {
+    const { a } = await setup();
+    expect((await a.call("POST", "/api/alerts/alert-new/read")).json).toEqual({ ok: true });
+    const list = await a.call("GET", "/api/alerts");
+    expect(list.status).toBe(200);
+    expect(list.json.unreadCount).toBe(1);
+    expect(list.json.alerts.map((x: { id: string }) => x.id)).toEqual(["alert-old", "alert-new"]);
+    expect(list.json.alerts[0]).toMatchObject({
+      businessName: business.name,
+      keyword: "coffee shop",
+      severity: "critical",
+      readAt: null,
+      metrics: { reasons: ["atrp", "solv"], before: { atrp: 2 }, after: { atrp: 9 } },
+    });
+    expect(list.json.alerts[1].readAt).not.toBeNull();
+    expect((await a.call("GET", "/api/alerts?limit=1")).json.alerts).toHaveLength(1);
+    expect((await a.call("GET", "/api/alerts?limit=0")).status).toBe(400);
+    expect((await a.call("GET", "/api/alerts?limit=abc")).status).toBe(400);
+  });
+
+  it("GET /api/alerts never shows another workspace's alerts", async () => {
+    const { b } = await setup();
+    expect((await b.call("GET", "/api/alerts")).json).toEqual({ unreadCount: 0, alerts: [] });
+  });
+
+  it("POST /api/alerts/:id/read is workspace-scoped and idempotent", async () => {
+    const { h, a, b } = await setup();
+    const cross = await b.call("POST", "/api/alerts/alert-old/read");
+    expect(cross.status).toBe(404);
+    expect(cross.json.error.code).toBe("NOT_FOUND");
+    expect(await readAtOf(h, "alert-old")).toBeNull();
+    expect((await a.call("POST", "/api/alerts/alert-old/read")).status).toBe(200);
+    const readAt = await readAtOf(h, "alert-old");
+    expect(readAt).not.toBeNull();
+    expect((await a.call("POST", "/api/alerts/alert-old/read")).status).toBe(200);
+    expect(await readAtOf(h, "alert-old")).toBe(readAt);
+    expect((await a.call("POST", "/api/alerts/nope/read")).status).toBe(404);
+  });
+
+  it("POST /api/alerts/read-all only touches the caller's workspace", async () => {
+    const { h, a, b } = await setup();
+    expect((await b.call("POST", "/api/alerts/read-all")).json).toEqual({ updated: 0 });
+    expect((await h.db.select().from(alerts)).every((r) => r.readAt === null)).toBe(true);
+    expect((await a.call("POST", "/api/alerts/read-all")).json).toEqual({ updated: 2 });
+    expect((await a.call("GET", "/api/alerts")).json.unreadCount).toBe(0);
+  });
+
+  it("GET/PUT /api/alert-settings: defaults, validation, round trip, per-workspace isolation", async () => {
+    const { a, b } = await setup();
+    const defaults = await a.call("GET", "/api/alert-settings");
+    expect(defaults.json).toMatchObject({ enabled: true, atrpWorse: 2, solvDown: 15, foundDropPct: 25, centerTop3: true, criticalAtrp: 5, criticalSolv: 30, webhookUrl: null, webhookConfigured: false });
+
+    expect((await a.call("PUT", "/api/alert-settings", { atrpWorse: -3 })).status).toBe(400);
+    const http = await a.call("PUT", "/api/alert-settings", { webhookUrl: "http://hooks.example.com/x" });
+    expect(http.status).toBe(400);
+    expect(http.json.error.code).toBe("VALIDATION_ERROR");
+    expect((await a.call("PUT", "/api/alert-settings", { webhookUrl: "https://127.0.0.1/x" })).status).toBe(400);
+
+    const saved = await a.call("PUT", "/api/alert-settings", { enabled: false, atrpWorse: 3.5, webhookUrl: "https://hooks.example.com/x" });
+    expect(saved.status).toBe(200);
+    expect(saved.json).toMatchObject({ enabled: false, atrpWorse: 3.5, solvDown: 15, webhookUrl: "https://hooks.example.com/x", webhookConfigured: true });
+    expect((await a.call("GET", "/api/alert-settings")).json).toMatchObject({ enabled: false, atrpWorse: 3.5 });
+
+    // a partial update leaves the rest alone; an empty string turns the webhook off
+    const cleared = await a.call("PUT", "/api/alert-settings", { webhookUrl: "" });
+    expect(cleared.json).toMatchObject({ enabled: false, atrpWorse: 3.5, webhookUrl: null, webhookConfigured: false });
+
+    // workspace B still has the defaults and cannot change A's
+    expect((await b.call("GET", "/api/alert-settings")).json).toMatchObject({ enabled: true, atrpWorse: 2, webhookUrl: null });
+    await b.call("PUT", "/api/alert-settings", { atrpWorse: 9 });
+    expect((await a.call("GET", "/api/alert-settings")).json.atrpWorse).toBe(3.5);
+  });
+
+  it("members can read the settings but not change them, and never see the webhook url", async () => {
+    const h = await createHarness({ env: { AUTH_MODE: "cloudflare_access" } });
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256" }] });
+    const env = { TEAM_DOMAIN: "https://team.cloudflareaccess.com", POLICY_AUD: "aud123" };
+    const { call } = client(h, env, keys);
+    const as = async (email: string) => ({
+      "cf-access-jwt-assertion": await new SignJWT({ email }).setProtectedHeader({ alg: "RS256", kid: "k1" }).setIssuer(env.TEAM_DOMAIN).setAudience("aud123").setExpirationTime("5m").sign(privateKey),
+    });
+    await call("GET", "/api/me", undefined, await as("owner@agency.com"));
+    const set = await call("PUT", "/api/alert-settings", { webhookUrl: "https://hooks.example.com/x" }, await as("owner@agency.com"));
+    expect(set.status).toBe(200);
+    const asMember = await call("GET", "/api/alert-settings", undefined, await as("staff@agency.com"));
+    expect(asMember.json).toMatchObject({ webhookUrl: null, webhookConfigured: true });
+    expect((await call("PUT", "/api/alert-settings", { enabled: false }, await as("staff@agency.com"))).status).toBe(403);
+  });
+
+  it("MCP list_alerts returns this workspace's alerts only", async () => {
+    const { h, a, b } = await setup();
+    const mcpCall = async (key: string, args: Record<string, unknown>) => {
+      const res = await createApp({ resolveDeps: () => h.deps }).request(
+        `${origin}/mcp`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${key}` },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_alerts", arguments: args } }),
+        },
+        {} as Env,
+      );
+      const json = (await res.json()) as { result: { structuredContent: { unreadCount: number; alerts: Array<{ alertId: string } & Record<string, unknown>> } } };
+      return json.result.structuredContent;
+    };
+    const aKey = (await a.call("POST", "/api/api-keys", { name: "a" })).json.key as string;
+    const bKey = (await b.call("POST", "/api/api-keys", { name: "b" })).json.key as string;
+    const mine = await mcpCall(aKey, {});
+    expect(mine.unreadCount).toBe(2);
+    expect(mine.alerts.map((x: { alertId: string }) => x.alertId)).toEqual(["alert-new", "alert-old"]);
+    expect(mine.alerts[0]).toMatchObject({ business: business.name, keyword: "coffee shop", reasons: ["atrp", "solv"], read: false });
+    await a.call("POST", "/api/alerts/alert-new/read");
+    expect((await mcpCall(aKey, { unreadOnly: true })).alerts.map((x: { alertId: string }) => x.alertId)).toEqual(["alert-old"]);
+    expect((await mcpCall(bKey, {})).alerts).toEqual([]);
   });
 });

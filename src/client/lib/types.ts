@@ -1,6 +1,11 @@
 import type { CompetitorSummary, ScanMetrics } from "@/shared/metrics";
 export type { ScanDetail, ScanListItem, TrackerSummary } from "@/worker/scans/queries";
 export type { CompetitorSummary, ScanMetrics };
+import type { AlertSettingsValues } from "@/shared/alerts";
+import type { AlertListItem } from "@/worker/alerts";
+export type { AlertListItem };
+export type AlertList = { unreadCount: number; alerts: AlertListItem[] };
+export type AlertSettings = AlertSettingsValues & { webhookConfigured: boolean };
 
 export type Me = {
   user: { id: string; email: string };

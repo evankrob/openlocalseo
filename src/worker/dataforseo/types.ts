@@ -29,6 +29,7 @@ export type MockHints = {
     name: string;
     placeId: string | null;
     domain: string | null;
+    category?: string | null;
     lat: number;
     lng: number;
     /** 0-1 strength of the tracked business in the simulated market. */
@@ -82,7 +83,57 @@ export interface DataForSeoProvider {
   liveSearch(input: LiveSearchInput): Promise<LiveSearchResult>;
   /** Google business details for a place ID (one cheap live call); null if unknown. */
   lookupPlace?(placeId: string): Promise<PlaceLookupResult | null>;
+  /** Google Business Profile details for a place ID (one live call); profile is null if Google has none (still billed). */
+  getBusinessProfile(input: BusinessProfileInput): Promise<BusinessProfileResult>;
+  /** Submit a reviews task. Billed at post time, so never replayed after an error. */
+  postReviewsTask(input: ReviewsTaskInput): Promise<ReviewsTaskPosted>;
+  /** Collect a reviews task. Free: it was billed when posted. */
+  getReviewsTask(taskId: string): Promise<ReviewsOutcome>;
 }
+
+/** The mock needs a hint of who the business is; the live provider ignores it. */
+export type BusinessProfileInput = { placeId: string; languageCode?: string; mockHints?: MockHints };
+
+export type BusinessProfile = {
+  placeId: string | null;
+  name: string | null;
+  address: string | null;
+  cid: string | null;
+  category: string | null;
+  additionalCategories: string[];
+  rating: number | null;
+  reviewCount: number | null;
+  /** Star (1-5) to number of reviews. */
+  ratingDistribution: Record<string, number> | null;
+  isClaimed: boolean | null;
+  totalPhotos: number | null;
+  phone: string | null;
+  domain: string | null;
+};
+
+export type BusinessProfileResult = { profile: BusinessProfile | null; billing: CallBilling };
+
+export type ReviewsTaskInput = { placeId: string; languageCode?: string; depth: number; mockHints?: MockHints };
+
+export type ReviewsTaskPosted = { taskId: string; billing: CallBilling };
+
+/** One Google review, normalized. Reviewer links and images are deliberately dropped. */
+export type Review = {
+  reviewId: string;
+  rating: number;
+  text: string | null;
+  /** ISO 8601 UTC. */
+  publishedAt: string;
+  profileName: string | null;
+  ownerAnswer: string | null;
+  /** ISO 8601 UTC; null when unanswered. */
+  ownerAnsweredAt: string | null;
+};
+
+export type ReviewsOutcome =
+  | { status: "pending" }
+  | { status: "failed"; message: string }
+  | { status: "completed"; reviews: Review[]; reviewCount: number | null; rating: number | null };
 
 export type PlaceInfo = {
   /** The place ID Google returned; compared against the one requested. */

@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { del, get, post, put } from "../lib/api";
-import { fmtDateTime } from "../lib/format";
-import type { AlertSettings, Me } from "../lib/types";
+import { fmtDateTime, fmtUsd } from "../lib/format";
+import type { AlertSettings, FailedJobs, Me } from "../lib/types";
 import { Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Table, Td, Textarea, Th } from "../components/ui";
 import { PageHeader } from "./shell";
 
@@ -19,6 +19,7 @@ export function Settings() {
       {admin ? (
         <>
           <AlertSettingsCard />
+          <FailedJobsCard />
           <BrandingCard />
           <KeysCard />
         </>
@@ -67,6 +68,42 @@ function AlertSettingsCard() {
         </Field>
         <div className="md:col-span-2 space-y-2"><ErrorNote error={save.error} /><Button type="submit" disabled={save.isPending}>{save.isSuccess ? "Saved" : "Save alert settings"}</Button></div>
       </form>
+    </Card>
+  );
+}
+
+function FailedJobsCard() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["failed-jobs"], queryFn: () => get<FailedJobs>("/ops/failed-jobs") });
+  const retry = useMutation({
+    mutationFn: (scanId: string) => post(`/scans/${scanId}/retry`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["failed-jobs"] }),
+  });
+  const jobs = q.data?.jobs ?? [];
+  return (
+    <Card>
+      <CardHeader title="Failed jobs" description="Scans and Google profile refreshes that failed in the last 30 days. Held credits are returned automatically. Retrying starts a new scan with a fresh cost estimate; it never reuses the failed scan's DataForSEO tasks." />
+      <div className="px-5 pb-1 pt-3"><ErrorNote error={q.error ?? retry.error} /></div>
+      {jobs.length === 0 ? (
+        <EmptyState title="No failed jobs" />
+      ) : (
+        <Table>
+          <thead><tr><Th>What</Th><Th>Error</Th><Th>Cost</Th><Th>When</Th><Th /></tr></thead>
+          <tbody>
+            {jobs.map((j) => (
+              <tr key={`${j.kind}-${j.id}`}>
+                <Td>{j.businessName}<div className="text-xs text-muted-foreground">{j.kind === "scan" ? `Scan “${j.keyword}”` : "Google profile"}</div></Td>
+                <Td className="max-w-xs text-sm">{j.error ?? "Unknown error"}</Td>
+                <Td className="whitespace-nowrap tabular-nums">{fmtUsd(j.costUsd)}{j.billedCredits > 0 && <div className="text-xs text-muted-foreground">{j.billedCredits} credits</div>}</Td>
+                <Td className="whitespace-nowrap text-xs">{fmtDateTime(j.createdAt)}</Td>
+                <Td className="whitespace-nowrap text-right">
+                  {j.kind === "scan" && <Button size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate(j.id)}>Retry</Button>}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
     </Card>
   );
 }

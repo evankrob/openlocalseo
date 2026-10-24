@@ -9,8 +9,9 @@ import {
   type ScanSnapshot,
 } from "@/shared/alerts";
 import { AppError } from "@/shared/errors";
+import { NEGATIVE_REVIEW_MAX_STARS, evaluateGbpAlerts, type GbpAlertMetrics } from "@/shared/gbp";
 import type { Db } from "./db";
-import { alertSettings, alerts, businesses, scanPoints, scans, trackers } from "./db/schema";
+import { alertSettings, alerts, businesses, gbpSnapshots, reviews, scanPoints, scans, trackers } from "./db/schema";
 import { newId, nowIso } from "./lib";
 import { assertWebhookUrl, type WebhookSender } from "./notify";
 
@@ -183,7 +184,189 @@ export async function createAlertsSafely(deps: AlertDeps, scanId: string, failed
   }
 }
 
+// ---- GBP alerts ---------------------------------------------------------------------
+
+/**
+ * Compares a just-completed profile snapshot with the business's previous
+ * completed one and stores rating_drop / negative_review alerts. Idempotent:
+ * (snapshot, kind) is unique, and only inserted alerts reach the webhook.
+ */
+export async function createAlertsForSnapshot(deps: AlertDeps, snapshotId: string): Promise<void> {
+  const { db } = deps;
+  const [snap] = await db.select().from(gbpSnapshots).where(eq(gbpSnapshots.id, snapshotId));
+  if (!snap || snap.status !== "completed") return;
+  const settings = await getAlertSettings(db, snap.workspaceId);
+  if (!settings.enabled) return;
+
+  const [previous] = await db
+    .select()
+    .from(gbpSnapshots)
+    .where(
+      and(
+        eq(gbpSnapshots.businessId, snap.businessId),
+        eq(gbpSnapshots.workspaceId, snap.workspaceId),
+        eq(gbpSnapshots.status, "completed"),
+        lt(gbpSnapshots.takenAt, snap.takenAt),
+      ),
+    )
+    .orderBy(desc(gbpSnapshots.takenAt))
+    .limit(1);
+  // The first snapshot is a baseline: nothing to compare, and every review in it looks new.
+  if (!previous) return;
+
+  const fresh = await db
+    .select()
+    .from(reviews)
+    .where(and(eq(reviews.businessId, snap.businessId), eq(reviews.workspaceId, snap.workspaceId), eq(reviews.firstSeenSnapshotId, snap.id)));
+
+  const candidates = evaluateGbpAlerts({
+    current: { rating: snap.rating, reviewCount: snap.reviewCount },
+    previous: { rating: previous.rating, reviewCount: previous.reviewCount },
+    newReviews: fresh.map((r) => ({ reviewId: r.reviewId, rating: r.rating, publishedAt: r.publishedAt, text: r.text?.slice(0, 280) ?? null })),
+  });
+  if (candidates.length === 0) return;
+
+  const [business] = await db
+    .select({ name: businesses.name })
+    .from(businesses)
+    .where(and(eq(businesses.id, snap.businessId), eq(businesses.workspaceId, snap.workspaceId)));
+
+  for (const candidate of candidates) {
+    const inserted = await db
+      .insert(alerts)
+      .values({
+        id: newId(),
+        workspaceId: snap.workspaceId,
+        businessId: snap.businessId,
+        snapshotId: snap.id,
+        kind: candidate.kind,
+        severity: candidate.severity,
+        metrics: JSON.stringify(candidate.metrics),
+        createdAt: nowIso(deps.now?.()),
+      })
+      .onConflictDoNothing({ target: [alerts.snapshotId, alerts.kind] })
+      .returning({ id: alerts.id });
+    if (inserted.length === 0 || !settings.webhookUrl || !deps.notify) continue;
+    sendWebhook(deps, settings.webhookUrl, inserted[0].id, gbpAlertText(business?.name ?? "Business", candidate));
+  }
+}
+
+export function gbpAlertText(business: string, candidate: { kind: string; severity: string; metrics: GbpAlertMetrics }): string {
+  const { rating, reviewCount, negativeReviews } = candidate.metrics;
+  const head = `${candidate.severity === "critical" ? ":rotating_light: Critical" : ":warning: Warning"}: ${business}`;
+  if (candidate.kind === "negative_review") {
+    const n = negativeReviews?.count ?? 0;
+    return `${head}: ${n} new ${n === 1 ? "review" : "reviews"} of ${NEGATIVE_REVIEW_MAX_STARS} stars or fewer on Google. Rating ${fmt(rating.before)} -> ${fmt(rating.after)}.`;
+  }
+  return `${head}: Google rating dropped ${fmt(rating.before)} -> ${fmt(rating.after)} (${fmt(reviewCount.before)} -> ${fmt(reviewCount.after)} reviews).`;
+}
+
+/** Wraps creation for the snapshot's finish step: a failure is logged, never thrown. */
+export async function createGbpAlertsSafely(deps: AlertDeps, snapshotId: string): Promise<void> {
+  try {
+    await createAlertsForSnapshot(deps, snapshotId);
+  } catch (error) {
+    console.error("alert.create-failed", { snapshotId, message: error instanceof Error ? error.message : "unknown error" });
+  }
+}
+
+// ---- failed jobs --------------------------------------------------------------------
+
+export type FailedJobTarget = { type: "scan"; scanId: string } | { type: "gbp"; snapshotId: string };
+
+/**
+ * Raised by the dead-letter consumer (and permanent-error handling) when a job
+ * is failed. Idempotent: (scan, kind) and (snapshot, kind) are unique, and only
+ * an inserted alert reaches the webhook. Errors are logged, never thrown.
+ */
+export async function createJobFailedAlertSafely(deps: AlertDeps, target: FailedJobTarget, message: string): Promise<void> {
+  try {
+    const { db } = deps;
+    let row: { workspaceId: string; trackerId: string | null; businessId: string; label: string; keyword: string | null };
+    if (target.type === "scan") {
+      const [found] = await db
+        .select({ workspaceId: scans.workspaceId, trackerId: scans.trackerId, businessId: trackers.businessId, label: businesses.name, keyword: scans.keyword })
+        .from(scans)
+        .innerJoin(trackers, eq(trackers.id, scans.trackerId))
+        .innerJoin(businesses, eq(businesses.id, trackers.businessId))
+        .where(eq(scans.id, target.scanId));
+      if (!found) return;
+      row = found;
+    } else {
+      const [found] = await db
+        .select({ workspaceId: gbpSnapshots.workspaceId, businessId: gbpSnapshots.businessId, label: businesses.name })
+        .from(gbpSnapshots)
+        .innerJoin(businesses, eq(businesses.id, gbpSnapshots.businessId))
+        .where(eq(gbpSnapshots.id, target.snapshotId));
+      if (!found) return;
+      row = { ...found, trackerId: null, keyword: null };
+    }
+    const settings = await getAlertSettings(db, row.workspaceId);
+    if (!settings.enabled) return;
+
+    const inserted = await db
+      .insert(alerts)
+      .values({
+        id: newId(),
+        workspaceId: row.workspaceId,
+        trackerId: row.trackerId,
+        scanId: target.type === "scan" ? target.scanId : null,
+        businessId: target.type === "gbp" ? row.businessId : null,
+        snapshotId: target.type === "gbp" ? target.snapshotId : null,
+        kind: "job_failed",
+        severity: "warning",
+        metrics: JSON.stringify({ message } satisfies JobFailedMetrics),
+        createdAt: nowIso(deps.now?.()),
+      })
+      .onConflictDoNothing()
+      .returning({ id: alerts.id });
+    if (inserted.length === 0 || !settings.webhookUrl || !deps.notify) return;
+    const what = target.type === "scan" ? `scan for "${row.keyword}"` : "Google profile refresh";
+    sendWebhook(deps, settings.webhookUrl, inserted[0].id, `:warning: Warning: ${row.label}: the ${what} failed (${message}). Nothing is lost; run it again from the app.`);
+  } catch (error) {
+    console.error("alert.create-failed", { target, message: error instanceof Error ? error.message : "unknown error" });
+  }
+}
+
+export type JobFailedMetrics = { message: string };
+
 // ---- read model -------------------------------------------------------------------
+
+type AlertBase = {
+  id: string;
+  severity: "warning" | "critical";
+  businessName: string;
+  createdAt: string;
+  readAt: string | null;
+};
+export type AlertListItem =
+  | (AlertBase & {
+      source: "job";
+      kind: "job_failed";
+      jobType: "scan" | "gbp";
+      trackerId: string | null;
+      businessId: string | null;
+      scanId: string | null;
+      snapshotId: string | null;
+      keyword: string | null;
+      message: string;
+    })
+  | (AlertBase & {
+      source: "scan";
+      kind: "rank_drop" | "data_problem";
+      trackerId: string;
+      scanId: string;
+      previousScanId: string | null;
+      keyword: string;
+      metrics: AlertMetrics;
+    })
+  | (AlertBase & {
+      source: "gbp";
+      kind: "rating_drop" | "negative_review";
+      businessId: string;
+      snapshotId: string;
+      metrics: GbpAlertMetrics;
+    });
 
 export async function listAlerts(db: Db, workspaceId: string, options: { limit: number }) {
   const rows = await db
@@ -193,9 +376,10 @@ export async function listAlerts(db: Db, workspaceId: string, options: { limit: 
       businessName: businesses.name,
     })
     .from(alerts)
-    .innerJoin(scans, eq(scans.id, alerts.scanId))
-    .innerJoin(trackers, eq(trackers.id, alerts.trackerId))
-    .innerJoin(businesses, eq(businesses.id, trackers.businessId))
+    .leftJoin(scans, eq(scans.id, alerts.scanId))
+    .leftJoin(trackers, eq(trackers.id, alerts.trackerId))
+    // Scan alerts reach the business through their tracker, GBP alerts directly.
+    .innerJoin(businesses, eq(businesses.id, sql`coalesce(${alerts.businessId}, ${trackers.businessId})`))
     .where(eq(alerts.workspaceId, workspaceId))
     .orderBy(sql`${alerts.readAt} is not null`, desc(alerts.createdAt))
     .limit(options.limit);
@@ -203,25 +387,46 @@ export async function listAlerts(db: Db, workspaceId: string, options: { limit: 
     .select({ unread: sql<number>`count(*)` })
     .from(alerts)
     .where(and(eq(alerts.workspaceId, workspaceId), isNull(alerts.readAt)));
-  return {
-    unreadCount: Number(unread),
-    alerts: rows.map(({ alert, keyword, businessName }) => ({
-      id: alert.id,
-      trackerId: alert.trackerId,
-      scanId: alert.scanId,
-      previousScanId: alert.previousScanId,
-      kind: alert.kind,
-      severity: alert.severity,
-      businessName,
-      keyword,
-      metrics: JSON.parse(alert.metrics) as AlertMetrics,
-      createdAt: alert.createdAt,
-      readAt: alert.readAt,
-    })),
-  };
+  const items: AlertListItem[] = [];
+  for (const { alert, keyword, businessName } of rows) {
+    const base = { id: alert.id, severity: alert.severity, businessName, createdAt: alert.createdAt, readAt: alert.readAt };
+    if (alert.kind === "job_failed") {
+      items.push({
+        ...base,
+        source: "job",
+        kind: alert.kind,
+        jobType: alert.snapshotId ? "gbp" : "scan",
+        trackerId: alert.trackerId,
+        businessId: alert.businessId,
+        scanId: alert.scanId,
+        snapshotId: alert.snapshotId,
+        keyword: keyword ?? null,
+        message: (JSON.parse(alert.metrics) as JobFailedMetrics).message,
+      });
+    } else if (alert.kind === "rating_drop" || alert.kind === "negative_review") {
+      items.push({
+        ...base,
+        source: "gbp",
+        kind: alert.kind,
+        businessId: alert.businessId!,
+        snapshotId: alert.snapshotId!,
+        metrics: JSON.parse(alert.metrics) as GbpAlertMetrics,
+      });
+    } else {
+      items.push({
+        ...base,
+        source: "scan",
+        kind: alert.kind,
+        trackerId: alert.trackerId!,
+        scanId: alert.scanId!,
+        previousScanId: alert.previousScanId,
+        keyword: keyword ?? "",
+        metrics: JSON.parse(alert.metrics) as AlertMetrics,
+      });
+    }
+  }
+  return { unreadCount: Number(unread), alerts: items };
 }
-
-export type AlertListItem = Awaited<ReturnType<typeof listAlerts>>["alerts"][number];
 
 export async function markAlertRead(db: Db, workspaceId: string, alertId: string, now?: Date): Promise<void> {
   const [row] = await db

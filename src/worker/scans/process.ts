@@ -14,8 +14,10 @@ import type { Db } from "../db";
 import { apiCalls, businesses, scanPoints, scanResults, scans, trackers } from "../db/schema";
 import type { DataForSeoProvider, LiveSearchInput, MapResult, MockHints } from "../dataforseo/types";
 import { MAX_TASKS_PER_POST } from "../dataforseo/types";
+import { handleGbpJob } from "../gbp/process";
 import { chunk, newId, nowIso } from "../lib";
 import type { WebhookSender } from "../notify";
+import type { RateLimiter } from "../ratelimit";
 import { COLLECT_CHUNK, LIVE_CHUNK, type ScanJob } from "./jobs";
 import { businessKey, isTargetBusiness } from "./match";
 import { pointCoordinate, type ScanDeps } from "./service";
@@ -23,6 +25,8 @@ import { insertResults, updatePoints, type PointUpdate, type ResultInsert } from
 
 export interface RawStore {
   put(key: string, body: string): Promise<void>;
+  /** Deletes up to `limit` objects under the prefix; resolves to how many it deleted. */
+  deletePrefix?(prefix: string, limit: number): Promise<number>;
 }
 
 export type ProcessDeps = ScanDeps & {
@@ -35,6 +39,8 @@ export type ProcessDeps = ScanDeps & {
   notify?: WebhookSender;
   /** Workers ExecutionContext.waitUntil, to let a notification outlive the job. */
   waitUntil?: (promise: Promise<unknown>) => void;
+  /** Request throttling for the HTTP API and MCP. Unset (tests, queue consumer) = no limits. */
+  rateLimiter?: RateLimiter;
 };
 
 type ScanRow = typeof scans.$inferSelect;
@@ -49,6 +55,9 @@ export async function handleScanJob(deps: ProcessDeps, job: ScanJob): Promise<vo
       return handleCollect(deps, job.scanId, job.pointIds);
     case "live":
       return handleLive(deps, job.scanId, job.pointIds);
+    case "gbp_snapshot":
+    case "gbp_reviews_collect":
+      return handleGbpJob(deps, job);
   }
 }
 
@@ -403,7 +412,7 @@ async function finalizeIfDone(deps: ProcessDeps, scanId: string) {
 }
 
 /** Bills the real cost against the hold: refund the unused part, or charge the overage. */
-async function settleCredits(deps: ProcessDeps, scan: ScanRow, costUsd: number) {
+export async function settleCredits(deps: ProcessDeps, scan: ScanRow, costUsd: number) {
   if (deps.config.billingMode !== "hosted" || scan.reservedCredits === 0) return;
   const billed = creditsForProviderUsd(costUsd, deps.config.markup);
   await deps.db.update(scans).set({ billedCredits: billed }).where(eq(scans.id, scan.id));

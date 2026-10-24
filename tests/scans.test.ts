@@ -169,7 +169,15 @@ describe("failure handling", () => {
   it("fails the scan and refunds the hold when the post step errors", async () => {
     const broken = (clock: { now: number }): DataForSeoProvider => {
       const inner = new MockDataForSeo({ now: () => clock.now });
-      return { mode: "mock", getTask: inner.getTask.bind(inner), liveSearch: inner.liveSearch.bind(inner), postTasks: async () => { throw new Error("DataForSEO HTTP 401"); } };
+      return {
+        mode: "mock",
+        getTask: inner.getTask.bind(inner),
+        liveSearch: inner.liveSearch.bind(inner),
+        getBusinessProfile: inner.getBusinessProfile.bind(inner),
+        postReviewsTask: inner.postReviewsTask.bind(inner),
+        getReviewsTask: inner.getReviewsTask.bind(inner),
+        postTasks: async () => { throw new Error("DataForSEO HTTP 401"); },
+      };
     };
     h = await createHarness({ env: { BILLING_MODE: "hosted" }, provider: broken });
     const ws = await seedWorkspace(h.db, 500);

@@ -37,6 +37,11 @@ export class MemoryRaw implements RawStore {
   async put(key: string, body: string) {
     this.objects.set(key, body);
   }
+  async deletePrefix(prefix: string, limit: number) {
+    const keys = [...this.objects.keys()].filter((k) => k.startsWith(prefix)).slice(0, limit);
+    for (const key of keys) this.objects.delete(key);
+    return keys.length;
+  }
 }
 
 export type Harness = Awaited<ReturnType<typeof createHarness>>;

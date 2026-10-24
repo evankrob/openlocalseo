@@ -24,7 +24,7 @@ export function PointPanel({ loader, pointId, queryKey }: { loader?: (pointId: s
   if (!pointId) return <EmptyState title="Select a pin">See who ranks where a customer would be standing.</EmptyState>;
   if (q.isLoading) return <div className="p-6"><Spinner /></div>;
   if (!q.data) return <EmptyState title="Could not load this point" />;
-  const { point, results } = q.data;
+  const { point, results, competitorsExpired } = q.data;
   return (
     <div>
       <div className="border-b border-border px-4 py-3 text-sm">
@@ -34,7 +34,7 @@ export function PointPanel({ loader, pointId, queryKey }: { loader?: (pointId: s
         <div className="text-muted-foreground">Your rank here: <strong className="text-foreground">{rankLabel(point.rank)}</strong></div>
       </div>
       {results.length === 0 ? (
-        <EmptyState title="No results at this point" />
+        competitorsExpired ? <EmptyState title="Competitor detail expired">The list of businesses at this point is no longer stored. Your rank above is kept.</EmptyState> : <EmptyState title="No results at this point" />
       ) : (
         <ol className="max-h-[420px] divide-y divide-border/60 overflow-auto">
           {results.map((r) => (
@@ -125,7 +125,13 @@ export function ScanView({
       {showCompetitors && (
         <Card className="print-break">
           <CardHeader title="Competitors" description="Every business seen in this scan, scored over the same grid points. Computed from the same results, at no extra cost." />
-          <CompetitorsTable competitors={data.competitors} targetName={data.business.name} />
+          {data.competitorsExpired ? (
+            <EmptyState title={data.retentionDays ? `Competitor detail expired after ${data.retentionDays} days` : "Competitor detail expired"}>
+              The per-business results of this scan were removed to save space. The map and metrics above are kept.
+            </EmptyState>
+          ) : (
+            <CompetitorsTable competitors={data.competitors} targetName={data.business.name} />
+          )}
         </Card>
       )}
     </div>

@@ -39,6 +39,9 @@ async function main() {
     mode: "mock",
     getTask: inner.getTask.bind(inner),
     liveSearch: inner.liveSearch.bind(inner),
+    getBusinessProfile: inner.getBusinessProfile.bind(inner),
+    postReviewsTask: inner.postReviewsTask.bind(inner),
+    getReviewsTask: inner.getReviewsTask.bind(inner),
     postTasks: (input: PostTasksInput) =>
       inner.postTasks({ ...input, mockHints: input.mockHints?.target ? { target: { ...input.mockHints.target, prominence } } : input.mockHints }),
   };

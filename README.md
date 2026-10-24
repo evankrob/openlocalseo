@@ -12,7 +12,8 @@ An open-source **local SEO map-grid rank tracker**: see where a business shows u
 - **Monthly scheduled scans** via Cron.
 - **White-label client reports**: revocable public links with your logo, colour and footer; print to PDF.
 - **Rank-drop alerts**: each finished scan is compared with the previous one; a meaningful drop raises an alert in the app, over MCP, and optionally to a Slack-compatible webhook.
-- **MCP server** (`run_scan`, `list_scans`, `get_scan`, `list_trackers`, `list_alerts`) for AI assistants.
+- **Google Business Profile tracking** (opt-in): rating, review count, review velocity, new reviews with owner-reply status and profile health, snapshotted monthly or on demand. See [Profile & review tracking](#profile--review-tracking).
+- **MCP server** (`run_scan`, `list_scans`, `get_scan`, `list_trackers`, `list_alerts`, `get_gbp_profile`, `list_reviews`) for AI assistants.
 - **Bring your own key** (you pay DataForSEO directly) or **hosted cost-plus billing** (credits, DataForSEO cost + 28%). Per-call cost is recorded either way.
 
 > **Safe by default.** Out of the box the app uses a **mock DataForSEO provider** with realistic fixtures: no API key, no network calls, no cost. Real scanning is an explicit opt-in (`DATAFORSEO_MODE=live`).
@@ -134,7 +135,7 @@ npx wrangler d1 migrations apply DB --remote
 npx wrangler deploy
 ```
 
-The Cron (`15 6 * * *`) starts due monthly scans. MCP clients must reach `/mcp` with a bearer API key, so exclude `/mcp` from the Access policy (API keys authenticate it) or use an Access service token.
+The Cron (`15 6 * * *`) starts due monthly scans and Google Business Profile snapshots. MCP clients must reach `/mcp` with a bearer API key, so exclude `/mcp` from the Access policy (API keys authenticate it) or use an Access service token.
 
 ## MCP
 
@@ -151,7 +152,9 @@ claude mcp add --transport http openlocalseo http://localhost:5173/mcp \
 | `run_scan` | starts a scan; **requires `maxCostUsd`**, the amount the user approved, and refuses if the estimate is higher |
 | `list_scans` | recent scans with ARP / ATRP / SoLV |
 | `get_scan` | status, metrics, a rank grid (rows north to south) and top competitors |
-| `list_alerts` | rank-drop alerts with before/after metrics, unread first |
+| `list_alerts` | rank-drop, rating-drop and negative-review alerts with before/after metrics, unread first |
+| `get_gbp_profile` | latest Google Business Profile snapshot of a business (rating, reviews, velocity, unanswered, health) and its history; read-only |
+| `list_reviews` | stored Google reviews of a business, newest first, optionally unanswered only; read-only |
 
 ## Alerts
 
@@ -167,6 +170,18 @@ It is `critical` when ATRP is worse by 5 or SoLV is down by 30 points, otherwise
 Alerts show up under **Alerts** (with an unread count in the sidebar and on the dashboard) and via `GET /api/alerts`, `POST /api/alerts/:id/read`, `POST /api/alerts/read-all`, `GET/PUT /api/alert-settings`.
 
 **Webhook (optional, off by default).** Set a Slack-compatible incoming webhook URL (https only) in the same settings card; each new alert sends one `POST {"text": "..."}` with a 5 second timeout. It is sent once, never retried, and a failure never affects the scan. Only workspace admins can see or change the URL.
+
+## Profile & review tracking
+
+Open a business (**Businesses -> Profile & reviews**) to track its Google Business Profile over time. It needs the business's Google place ID. Each snapshot records the rating, review count and star distribution, claimed status, categories, photo count, phone and website, plus the newest 20 reviews (star rating, text up to 2000 characters, date, reviewer's display name and whether the owner replied; reviewer profile links and images are never stored). From the stored snapshots it derives **new reviews since the last snapshot**, their average rating, **review velocity** (reviews per 30 days) and the **unanswered count among the newest 20**. The first snapshot is a baseline: it raises no alerts.
+
+Tracking is **off by default**, because it spends money. Turn on **Track monthly** to snapshot on the 1st of every month from the daily Cron (enabling it spends nothing right away; use **Refresh now** for the baseline), or refresh on demand. A refresh shows its quote on the button and is refused if the estimate is higher. One refresh runs at a time per business.
+
+**Cost.** One snapshot is a Business Profile call (about $0.0054) plus a reviews task (about $0.00075 per 10 reviews; $0.0015 at depth 20): **about $0.007 per business per month**. Both calls are recorded in the usage log. In hosted mode the estimate is held up front, settled on the real cost, and refunded if the snapshot fails (a failed reviews post is never retried, since it may already have been billed).
+
+**Alerts.** Two more alert kinds, using the same Alerts page, MCP tool and webhook as rank drops: `rating_drop` (rating down by 0.2 or more since the previous completed snapshot; critical at 0.5) and `negative_review` (a review of 2 stars or fewer that is new in this snapshot). One alert per snapshot and kind, and they follow the workspace's alerts on/off switch.
+
+API: `PATCH /api/businesses/:id` (`{"gbpTracking": true}`), `GET /api/businesses/:id/gbp` (latest snapshot, change, history series, quote), `POST /api/businesses/:id/gbp/refresh` (202 with the quote; optional `maxCostUsd`), `GET /api/businesses/:id/reviews?limit&cursor&unanswered=1`.
 
 ## Mocked vs real
 

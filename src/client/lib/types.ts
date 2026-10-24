@@ -7,6 +7,12 @@ export type { AlertListItem };
 export type AlertList = { unreadCount: number; alerts: AlertListItem[] };
 export type AlertSettings = AlertSettingsValues & { webhookConfigured: boolean };
 
+import type { GbpQuote } from "@/worker/gbp/service";
+import type { GbpSnapshotView, ReviewView, getGbpOverview } from "@/worker/gbp/queries";
+export type { GbpQuote, GbpSnapshotView, ReviewView };
+export type GbpOverview = Awaited<ReturnType<typeof getGbpOverview>> & { quote: GbpQuote; monthlyCostUsd: number };
+export type ReviewPage = { reviews: ReviewView[]; nextCursor: string | null };
+
 export type Me = {
   user: { id: string; email: string };
   workspace: { id: string; name: string; role: "owner" | "admin" | "member" };

@@ -1,0 +1,104 @@
+{
+  "version": "0.1.20261022",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "9.2631 sec.",
+  "cost": 0.0054,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "10241625-1468-0572-0000-9e4973deb49b",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "9.2540 sec.",
+      "cost": 0.0054,
+      "result_count": 1,
+      "path": [
+        "v3",
+        "business_data",
+        "google",
+        "my_business_info",
+        "live"
+      ],
+      "data": {
+        "api": "business_data",
+        "function": "my_business_info",
+        "se": "google",
+        "keyword": "place_id:ChIJi_IC309ZrIkRH3MyjF43V84",
+        "location_code": 2840,
+        "language_code": "en"
+      },
+      "result": [
+        {
+          "keyword": "place_id:ChIJi_IC309ZrIkRH3MyjF43V84",
+          "se_domain": "google.com",
+          "location_code": 2840,
+          "language_code": "en",
+          "check_url": "https://www.google.com/maps?cid=14868413574005551903&hl=en&gl=US",
+          "datetime": "2026-10-24 16:25:47 +00:00",
+          "item_types": [
+            "google_business_info"
+          ],
+          "items_count": 1,
+          "items": [
+            {
+              "type": "google_business_info",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "position": "left",
+              "title": "Carolina Wildlife Removal",
+              "original_title": null,
+              "category": "Pest control service",
+              "category_ids": null,
+              "additional_categories": [
+                "Animal control service",
+                "Wildlife rescue service"
+              ],
+              "cid": "14868413574005551903",
+              "feature_id": "0x89ac594fdf02f28b:0xce57375e8c32731f",
+              "address": "5640 Quail Covey Ln, Wendell, NC 27591",
+              "address_info": {
+                "borough": "Weathers Hunt",
+                "address": "5640 Quail Covey Ln",
+                "city": "Wendell",
+                "zip": "27591",
+                "region": "North Carolina",
+                "country_code": "US"
+              },
+              "place_id": "ChIJi_IC309ZrIkRH3MyjF43V84",
+              "phone": "+1919-896-4278",
+              "url": "https://carolinawildliferemoval.com/",
+              "contact_url": null,
+              "book_online_url": "https://clienthub.getjobber.com/hubs/fd508474-b53c-4438-956b-2a6fd6227db5/public/requests/1468851/new?rwg_token=AE37R_iWU47UqZn_3PfGeUloJ93gT5Fp05RnohR5EhMC8qE88dUbW-0VYnu0vsR2K2qc4OTlbJMZ421jP1BjZnIIVczpih-jHA%3D%3D",
+              "domain": "carolinawildliferemoval.com",
+              "total_photos": 44,
+              "snippet": "5640 Quail Covey Ln, Wendell, NC 27591",
+              "latitude": 35.8388111,
+              "longitude": -78.4430659,
+              "is_claimed": true,
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4.7,
+                "votes_count": 197,
+                "rating_max": null
+              },
+              "hotel_rating": null,
+              "price_level": null,
+              "rating_distribution": {
+                "1": 13,
+                "2": 1,
+                "3": 2,
+                "4": 6,
+                "5": 175
+              },
+              "is_directory_item": false,
+              "directory": null,
+              "services": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

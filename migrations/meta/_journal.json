@@ -15,6 +15,20 @@
       "when": 1792858827612,
       "tag": "0001_lowly_steve_rogers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792859816065,
+      "tag": "0002_same_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792859819751,
+      "tag": "0003_large_dark_phoenix",
+      "breakpoints": true
     }
   ]
 }

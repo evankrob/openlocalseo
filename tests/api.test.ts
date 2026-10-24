@@ -331,7 +331,7 @@ describe("MCP server", () => {
     expect((await mcp(h, "olseo_wrong", "tools/list")).status).toBe(401);
 
     const list = await mcp(h, key, "tools/list");
-    expect(list.json.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["get_scan", "list_alerts", "list_scans", "list_trackers", "run_scan"]);
+    expect(list.json.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["get_gbp_profile", "get_scan", "list_alerts", "list_reviews", "list_scans", "list_trackers", "run_scan"]);
 
     const trackers = await mcp(h, key, "tools/call", { name: "list_trackers", arguments: {} });
     expect(trackers.json.result.structuredContent.trackers[0].trackerId).toBe(tracker.json.id);

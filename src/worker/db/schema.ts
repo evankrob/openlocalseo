@@ -104,10 +104,13 @@ export const businesses = sqliteTable(
     category: text("category"),
     lat: real("lat").notNull(),
     lng: real("lng").notNull(),
+    // Opt-in monthly Google Business Profile snapshot (costs money, so off by default).
+    gbpTracking: integer("gbp_tracking", { mode: "boolean" }).notNull().default(false),
+    gbpNextRunAt: text("gbp_next_run_at"),
     createdAt: createdAt(),
     archivedAt: text("archived_at"),
   },
-  (t) => [index("businesses_workspace_idx").on(t.workspaceId)],
+  (t) => [index("businesses_workspace_idx").on(t.workspaceId), index("businesses_gbp_next_run_idx").on(t.gbpNextRunAt)],
 );
 
 export const trackers = sqliteTable(
@@ -292,7 +295,7 @@ export const creditLedger = sqliteTable(
     // Negative = spend/hold, positive = grant/top-up/refund.
     delta: integer("delta").notNull(),
     reason: text("reason", {
-      enum: ["grant", "topup", "scan_hold", "scan_refund"],
+      enum: ["grant", "topup", "scan_hold", "scan_refund", "gbp_hold", "gbp_refund"],
     }).notNull(),
     createdAt: createdAt(),
   },
@@ -336,10 +339,89 @@ export const reportShares = sqliteTable(
   (t) => [index("report_shares_tracker_idx").on(t.trackerId)],
 );
 
+// ---- Google Business Profile tracking ----------------------------------------------
+
+// One row per profile snapshot (monthly or on demand): the profile numbers plus
+// what changed since the previous completed snapshot.
+export const gbpSnapshots = sqliteTable(
+  "gbp_snapshots",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    trigger: text("trigger", { enum: ["manual", "schedule"] }).notNull(),
+    takenAt: text("taken_at").notNull(),
+    status: text("status", { enum: ["queued", "running", "completed", "failed"] }).notNull(),
+    rating: real("rating"),
+    reviewCount: integer("review_count"),
+    // JSON text: star ("1".."5") to number of reviews.
+    ratingDistribution: text("rating_distribution"),
+    isClaimed: integer("is_claimed", { mode: "boolean" }),
+    totalPhotos: integer("total_photos"),
+    primaryCategory: text("primary_category"),
+    // JSON text array.
+    additionalCategories: text("additional_categories"),
+    phone: text("phone"),
+    domain: text("domain"),
+    // Reviews task: stored right after the billed post so it is never posted twice.
+    reviewsTaskId: text("reviews_task_id"),
+    // Derived when the snapshot completes (see gbp/process.ts).
+    newReviews: integer("new_reviews"),
+    newReviewsAvgRating: real("new_reviews_avg_rating"),
+    velocity30d: real("velocity_30d"),
+    unansweredLast20: integer("unanswered_last_20"),
+    costUsd: real("cost_usd").notNull().default(0),
+    reservedCredits: integer("reserved_credits").notNull().default(0),
+    billedCredits: integer("billed_credits").notNull().default(0),
+    error: text("error"),
+    completedAt: text("completed_at"),
+  },
+  (t) => [
+    index("gbp_snapshots_business_idx").on(t.businessId, t.takenAt),
+    index("gbp_snapshots_workspace_idx").on(t.workspaceId, t.takenAt),
+    // One refresh at a time per business, so two clicks cannot both be charged.
+    uniqueIndex("gbp_snapshots_one_active_idx")
+      .on(t.businessId)
+      .where(sql`${t.status} IN ('queued','running')`),
+  ],
+);
+
+export const reviews = sqliteTable(
+  "reviews",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    // Google's review id. Reviewer profile links and images are never stored.
+    reviewId: text("review_id").notNull(),
+    reviewerName: text("reviewer_name"),
+    rating: integer("rating").notNull(),
+    text: text("text"),
+    publishedAt: text("published_at").notNull(),
+    ownerAnswered: integer("owner_answered", { mode: "boolean" }).notNull().default(false),
+    ownerAnsweredAt: text("owner_answered_at"),
+    firstSeenSnapshotId: text("first_seen_snapshot_id").references(() => gbpSnapshots.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    uniqueIndex("reviews_business_review_idx").on(t.businessId, t.reviewId),
+    index("reviews_business_published_idx").on(t.businessId, t.publishedAt),
+  ],
+);
+
 // ---- rank-drop alerts ------------------------------------------------------------
 
-// Raised when a scan is finalized (scans/alerts.ts). At most one alert per
-// scan and kind, so queue redelivery cannot duplicate it.
+// Raised when a scan is finalized (rank_drop, data_problem) or a GBP snapshot
+// completes (rating_drop, negative_review); see alerts.ts. At most one alert
+// per scan (or snapshot) and kind, so queue redelivery cannot duplicate it.
+// Scan alerts carry tracker_id + scan_id, GBP alerts business_id + snapshot_id.
 export const alerts = sqliteTable(
   "alerts",
   {
@@ -347,14 +429,12 @@ export const alerts = sqliteTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    trackerId: text("tracker_id")
-      .notNull()
-      .references(() => trackers.id, { onDelete: "cascade" }),
-    scanId: text("scan_id")
-      .notNull()
-      .references(() => scans.id, { onDelete: "cascade" }),
+    trackerId: text("tracker_id").references(() => trackers.id, { onDelete: "cascade" }),
+    scanId: text("scan_id").references(() => scans.id, { onDelete: "cascade" }),
     previousScanId: text("previous_scan_id").references(() => scans.id, { onDelete: "set null" }),
-    kind: text("kind", { enum: ["rank_drop", "data_problem"] }).notNull(),
+    businessId: text("business_id").references(() => businesses.id, { onDelete: "cascade" }),
+    snapshotId: text("snapshot_id").references(() => gbpSnapshots.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["rank_drop", "data_problem", "rating_drop", "negative_review"] }).notNull(),
     severity: text("severity", { enum: ["warning", "critical"] }).notNull(),
     // JSON text, see AlertMetrics in shared/alerts.ts.
     metrics: text("metrics").notNull(),
@@ -363,6 +443,7 @@ export const alerts = sqliteTable(
   },
   (t) => [
     uniqueIndex("alerts_scan_kind_idx").on(t.scanId, t.kind),
+    uniqueIndex("alerts_snapshot_kind_idx").on(t.snapshotId, t.kind),
     index("alerts_workspace_idx").on(t.workspaceId, t.readAt, t.createdAt),
   ],
 );

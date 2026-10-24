@@ -1,0 +1,254 @@
+{
+  "version": "0.1.20261022",
+  "status_code": 20000,
+  "status_message": "Ok.",
+  "time": "0.0483 sec.",
+  "cost": 0,
+  "tasks_count": 1,
+  "tasks_error": 0,
+  "tasks": [
+    {
+      "id": "10241625-1468-0298-0000-2ea770d98c71",
+      "status_code": 20000,
+      "status_message": "Ok.",
+      "time": "0.0141 sec.",
+      "cost": 0,
+      "result_count": 1,
+      "path": [
+        "v3",
+        "business_data",
+        "google",
+        "reviews",
+        "task_get",
+        "10241625-1468-0298-0000-2ea770d98c71"
+      ],
+      "data": {
+        "se_type": "reviews",
+        "se": "google",
+        "api": "business_data",
+        "function": "reviews",
+        "keyword": "place_id:ChIJi_IC309ZrIkRH3MyjF43V84",
+        "location_code": 2840,
+        "language_code": "en",
+        "depth": 20,
+        "sort_by": "newest",
+        "device": "desktop",
+        "os": "windows"
+      },
+      "result": [
+        {
+          "keyword": "place_id:ChIJi_IC309ZrIkRH3MyjF43V84",
+          "type": "google_reviews",
+          "se_domain": "google.com",
+          "location_code": 2840,
+          "language_code": "en",
+          "check_url": "https://www.google.com/search?q=Carolina+Wildlife+Removal+5640+Quail+Covey+Ln%2C+Wendell%2C+NC+27591%2C+United+States&sort=newestFirst&hl=en&gl=US&gws_rd=cr&ie=UTF-8&oe=UTF-8&uule=w+CAIQIFISCQs2MuSEtepUEUK33kOSuTsc",
+          "datetime": "2026-10-24 16:25:54 +00:00",
+          "title": "Carolina Wildlife Removal",
+          "sub_title": "5640 Quail Covey Ln, Wendell, NC 27591, United States",
+          "rating": {
+            "rating_type": "Max5",
+            "value": 4.7,
+            "votes_count": 197,
+            "rating_max": 5
+          },
+          "feature_id": "0x89ac594fdf02f28b:0xce57375e8c32731f",
+          "place_id": "ChIJi_IC309ZrIkRH3MyjF43V84",
+          "cid": "14868413574005551903",
+          "reviews_count": 197,
+          "items_count": 4,
+          "items": [
+            {
+              "type": "google_reviews_search",
+              "rank_group": 1,
+              "rank_absolute": 1,
+              "position": "left",
+              "xpath": null,
+              "review_text": "Sample review text 1.",
+              "original_review_text": "Sample review text 1.",
+              "original_language": "en",
+              "time_ago": "a week ago",
+              "timestamp": "2026-10-14 17:05:36 +00:00",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 4,
+                "votes_count": null,
+                "rating_max": 5
+              },
+              "reviews_count": 12,
+              "photos_count": 4,
+              "local_guide": true,
+              "profile_name": "Reviewer 1",
+              "profile_url": null,
+              "review_url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2pNemJGbHpXSGg2UVZSNWRGZEtkSHBsYVdOM2JrRRAB!2m1!1s0x0:0xce57375e8c32731f!3m1!1s2@1:CAIQACodChtycF9oOjMzbFlzWHh6QVR5dFdKdHplaWN3bkE%7C%7C?hl=en-US",
+              "profile_image_url": null,
+              "owner_answer": "Carolina Wildlife Removal warranties the bat removal and exclusion for 10 years and there is an optional lifetime warranty available<br>",
+              "original_owner_answer": null,
+              "owner_time_ago": "5 days ago",
+              "owner_timestamp": "2026-10-19 16:25:54 +00:00",
+              "review_id": "Ci9DQUlRQUNvZENodHljRjlvT2pNemJGbHpXSGg2UVZSNWRGZEtkSHBsYVdOM2JrRRAB",
+              "images": null,
+              "review_highlights": [
+                {
+                  "feature": "Price assessment",
+                  "assessment": "Not sure"
+                },
+                {
+                  "feature": "Price",
+                  "assessment": "$200+"
+                },
+                {
+                  "feature": "Services",
+                  "assessment": "Service not listed"
+                },
+                {
+                  "feature": "Pest type",
+                  "assessment": "Other"
+                }
+              ]
+            },
+            {
+              "type": "google_reviews_search",
+              "rank_group": 2,
+              "rank_absolute": 2,
+              "position": "left",
+              "xpath": null,
+              "review_text": "Sample review text 2.",
+              "original_review_text": "Sample review text 2.",
+              "original_language": "en",
+              "time_ago": "a week ago",
+              "timestamp": "2026-10-12 23:13:42 +00:00",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": null,
+                "rating_max": 5
+              },
+              "reviews_count": 19,
+              "photos_count": 1,
+              "local_guide": true,
+              "profile_name": "Reviewer 2",
+              "profile_url": null,
+              "review_url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2pCV1FXUnJkSG8xZEZkcVkwbEpXRnBzZG5oUmQzYxAB!2m1!1s0x0:0xce57375e8c32731f!3m1!1s2@1:CAIQACodChtycF9oOjBWQWRrdHo1dFdqY0lJWFpsdnhRd3c%7C%7C?hl=en-US",
+              "profile_image_url": null,
+              "owner_answer": "Thank you for choosing Carolina Wildlife Removal.  Our work comes with a strong warranty. Please let us know if you experience any more issues.",
+              "original_owner_answer": null,
+              "owner_time_ago": "5 days ago",
+              "owner_timestamp": "2026-10-19 16:25:54 +00:00",
+              "review_id": "Ci9DQUlRQUNvZENodHljRjlvT2pCV1FXUnJkSG8xZEZkcVkwbEpXRnBzZG5oUmQzYxAB",
+              "images": null,
+              "review_highlights": [
+                {
+                  "feature": "Price assessment",
+                  "assessment": "Reasonable price"
+                },
+                {
+                  "feature": "Services",
+                  "assessment": "General wildlife removal"
+                },
+                {
+                  "feature": "Pest type",
+                  "assessment": "Other"
+                }
+              ]
+            },
+            {
+              "type": "google_reviews_search",
+              "rank_group": 3,
+              "rank_absolute": 3,
+              "position": "left",
+              "xpath": null,
+              "review_text": null,
+              "original_review_text": null,
+              "original_language": null,
+              "time_ago": "2 weeks ago",
+              "timestamp": "2026-10-05 18:07:15 +00:00",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": null,
+                "rating_max": 5
+              },
+              "reviews_count": 4,
+              "photos_count": 67,
+              "local_guide": true,
+              "profile_name": "Reviewer 3",
+              "profile_url": null,
+              "review_url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT21aVGJ5MVVkUzA0UzB0aGVuWkphSGt5ZW5WelUwRRAB!2m1!1s0x0:0xce57375e8c32731f!3m1!1s2@1:CAIQACodChtycF9oOmZTby1UdS04S0thenZJaHkyenVzU0E%7C%7C?hl=en-US",
+              "profile_image_url": null,
+              "owner_answer": "Thank you for the 5-star review, Angie! Our team at Carolina Wildlife Removal is glad we could help resolve your bat issue quickly and affordably. We appreciate your support!",
+              "original_owner_answer": null,
+              "owner_time_ago": "a week ago",
+              "owner_timestamp": "2026-10-17 16:25:54 +00:00",
+              "review_id": "Ci9DQUlRQUNvZENodHljRjlvT21aVGJ5MVVkUzA0UzB0aGVuWkphSGt5ZW5WelUwRRAB",
+              "images": null,
+              "review_highlights": [
+                {
+                  "feature": "Price assessment",
+                  "assessment": "Great price"
+                },
+                {
+                  "feature": "Price",
+                  "assessment": "$200+"
+                },
+                {
+                  "feature": "Services",
+                  "assessment": "Bat extermination"
+                },
+                {
+                  "feature": "Pest type",
+                  "assessment": "Other"
+                }
+              ]
+            },
+            {
+              "type": "google_reviews_search",
+              "rank_group": 4,
+              "rank_absolute": 4,
+              "position": "left",
+              "xpath": null,
+              "review_text": "Sample review text 4.",
+              "original_review_text": "Sample review text 4.",
+              "original_language": "en",
+              "time_ago": "3 weeks ago",
+              "timestamp": "2026-10-02 19:44:19 +00:00",
+              "rating": {
+                "rating_type": "Max5",
+                "value": 5,
+                "votes_count": null,
+                "rating_max": 5
+              },
+              "reviews_count": 2,
+              "photos_count": null,
+              "local_guide": false,
+              "profile_name": "Reviewer 4",
+              "profile_url": null,
+              "review_url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT21KWk1uSkxabHBTVUhGTGRYSk9RMWxvVG1FdFJGRRAB!2m1!1s0x0:0xce57375e8c32731f!3m1!1s2@1:CAIQACodChtycF9oOmJZMnJLZlpSUHFLdXJOQ1loTmEtRFE%7C%7C?hl=en-US",
+              "profile_image_url": null,
+              "owner_answer": "Thank you, Dina! We're glad to provide reliable attic inspection services and give you complete peace of mind. We appreciate your support!",
+              "original_owner_answer": null,
+              "owner_time_ago": "2 weeks ago",
+              "owner_timestamp": "2026-10-10 16:25:54 +00:00",
+              "review_id": "Ci9DQUlRQUNvZENodHljRjlvT21KWk1uSkxabHBTVUhGTGRYSk9RMWxvVG1FdFJGRRAB",
+              "images": null,
+              "review_highlights": [
+                {
+                  "feature": "Price assessment",
+                  "assessment": "Reasonable price"
+                },
+                {
+                  "feature": "Price",
+                  "assessment": "$120\u2013140"
+                },
+                {
+                  "feature": "Pest type",
+                  "assessment": "Other"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

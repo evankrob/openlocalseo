@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./styles/app.css";
 import { AlertsPage } from "./pages/Alerts";
 import { AuthPage } from "./pages/Auth";
+import { BusinessDetail } from "./pages/BusinessDetail";
 import { Businesses } from "./pages/Businesses";
 import { Dashboard } from "./pages/Dashboard";
 import { PublicReport } from "./pages/PublicReport";
@@ -31,7 +32,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="trackers/:id" element={<TrackerDetail />} />
             <Route path="scans/:id" element={<ScanPage />} />
             <Route path="alerts" element={<AlertsPage />} />
-            <Route path="businesses"element={<Businesses />} />
+            <Route path="businesses" element={<Businesses />} />
+            <Route path="businesses/:id" element={<BusinessDetail />} />
             <Route path="usage" element={<UsagePage />} />
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<p>Page not found.</p>} />

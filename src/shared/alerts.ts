@@ -3,8 +3,11 @@
 import { z } from "zod";
 import { TOP_3 } from "./metrics";
 
-export const ALERT_KINDS = ["rank_drop", "data_problem"] as const;
+/** Raised from a scan (rank_drop, data_problem) or a GBP snapshot (rating_drop, negative_review). */
+export const ALERT_KINDS = ["rank_drop", "data_problem", "rating_drop", "negative_review"] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
+export type ScanAlertKind = "rank_drop" | "data_problem";
+export type GbpAlertKind = "rating_drop" | "negative_review";
 export type AlertSeverity = "warning" | "critical";
 export type AlertTrigger = "atrp" | "solv" | "found_points" | "center_top3" | "failed_points";
 
@@ -78,7 +81,7 @@ export type AlertMetrics = {
 };
 
 export type AlertCandidate = {
-  kind: AlertKind;
+  kind: ScanAlertKind;
   severity: AlertSeverity;
   metrics: AlertMetrics;
 };

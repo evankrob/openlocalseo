@@ -11,6 +11,8 @@ export type AppConfig = {
   pollDelaySeconds: Record<Exclude<QueueMode, "live">, number>;
   /** Give up on a queued scan after this long. */
   maxScanSeconds: Record<QueueMode, number>;
+  /** Give up on a Google Business Profile reviews task after this long. */
+  maxGbpSeconds: number;
 };
 
 export function loadConfig(env: Partial<Env>): AppConfig {
@@ -34,5 +36,6 @@ export function loadConfig(env: Partial<Env>): AppConfig {
         ? { standard: 5, priority: 3 }
         : { standard: 60, priority: 15 },
     maxScanSeconds: { standard: 3 * 3600, priority: 30 * 60, live: 15 * 60 },
+    maxGbpSeconds: 3600,
   };
 }

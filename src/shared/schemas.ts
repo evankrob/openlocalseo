@@ -32,6 +32,9 @@ export const businessInputSchema = z.object({
 });
 export type BusinessInput = z.infer<typeof businessInputSchema>;
 
+export const businessPatchSchema = z.object({ gbpTracking: z.boolean().optional() });
+export type BusinessPatch = z.infer<typeof businessPatchSchema>;
+
 const radiusSchema = z.object({
   value: z.number().positive(),
   unit: z.enum(["km", "mi"]),

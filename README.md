@@ -183,6 +183,37 @@ Tracking is **off by default**, because it spends money. Turn on **Track monthly
 
 API: `PATCH /api/businesses/:id` (`{"gbpTracking": true}`), `GET /api/businesses/:id/gbp` (latest snapshot, change, history series, quote), `POST /api/businesses/:id/gbp/refresh` (202 with the quote; optional `maxCostUsd`), `GET /api/businesses/:id/reviews?limit&cursor&unanswered=1`.
 
+## Operations: rate limits, retention, failed jobs
+
+**Rate limits.** Over a limit the API answers `429` with `{"error":{"code":"RATE_LIMITED","retryAfterSeconds":N}}` and a `Retry-After` header.
+
+| Rule | Default | Counted per | Variable |
+|---|---|---|---|
+| `POST /api/auth/signup` + `/login`, burst | 10 / minute | client IP (`cf-connecting-ip`) | `RATE_LIMIT_AUTH_PER_MIN` |
+| same endpoints, sustained | 30 / hour | client IP | `RATE_LIMIT_AUTH_PER_HOUR` |
+| `POST /api/auth/login` | 20 / hour | email (any IP) | `RATE_LIMIT_LOGIN_EMAIL_PER_HOUR` |
+| `GET /api/public/reports/*` | 60 / minute | client IP | `RATE_LIMIT_PUBLIC_REPORT_PER_MIN` |
+| starting a scan (`POST /api/trackers/:id/scans`, `POST /api/scans/:id/retry`, MCP `run_scan`) and `POST /api/businesses/:id/gbp/refresh` | 30 / hour | workspace | `RATE_LIMIT_SCANS_PER_HOUR` |
+| any request authenticated with an API key (`/api`, `/mcp`) | 600 / minute | API key | `RATE_LIMIT_API_KEY_PER_MIN` |
+
+A value of `0` turns a rule off. Scheduled scans are not limited.
+
+Two backends sit behind one interface (`src/worker/ratelimit/`). The per-minute rules (`RL_AUTH`, `RL_PUBLIC`, `RL_API_KEY`) use the **Workers Rate Limiting binding** when `wrangler.jsonc` declares it (`ratelimits`); the limit and period then come from wrangler.jsonc and the three per-minute variables above are ignored. Everything else (the hourly rules), and the per-minute rules when the binding is absent (local dev, tests), use a **D1 fixed-window counter** (`rate_limits` table, one upsert per check). The counter is exact but costs a D1 write per request; if the limiter itself errors, the request is let through and the error is logged.
+
+**Retention.** The daily Cron prunes after the schedules run, in bounded batches (5000 rows per statement, at most 20 per step; a backlog drains over the next days). It logs a `retention.tick` summary.
+
+| Data | Kept for | Variable |
+|---|---|---|
+| `scan_results` (per-point competitor lists) and the raw R2 archive of the scan | 400 days | `RETENTION_SCAN_RESULTS_DAYS` |
+| `api_calls` (the Usage page's call log and monthly spend) | 180 days | `RETENTION_API_CALLS_DAYS` |
+| `rate_limits` rows | 1 day | `RETENTION_RATE_LIMIT_ROWS` |
+
+`0` keeps that data forever. **Scans and scan points (the rank grid and every metric), credits, GBP snapshots and reviews are never pruned.** A scan whose competitor rows are gone keeps its heat map and metrics; its competitor table and per-point lists show "Competitor detail expired after N days", in the app and in public reports.
+
+**Failed jobs.** Transient errors (DataForSEO 5xx or timeout, D1 busy) retry with exponential backoff (10s, 20s, 40s ... capped at 5 minutes, up to 5 retries). Permanent errors (validation, not found, insufficient credits, bad DataForSEO key) fail the scan at once instead of burning retries. A job that exhausts its retries goes to `openlocalseo-scans-dlq`, which the same Worker consumes: the scan (or Google profile snapshot) is marked `failed` ("Processing failed after retries"), its unfinished points are failed, held credits are settled on what was really spent (hosted mode), and one `job_failed` alert is raised (Alerts page, MCP, webhook). Redelivery changes nothing. A billed DataForSEO task is never posted again.
+
+Admins see failed scans and snapshots of the last 30 days, with error and cost, under **Settings -> Failed jobs** (`GET /api/ops/failed-jobs`). **Retry** (`POST /api/scans/:id/retry`, failed scans only) starts a new scan for the same tracker with a fresh quote and credit hold; `maxCostUsd` is optional as for any scan.
+
 ## Mocked vs real
 
 | Mocked by default | Real |

@@ -23,6 +23,8 @@ type Report = {
     business: { lat: number; lng: number; name: string };
   };
   competitors: CompetitorSummary[];
+  competitorsExpired: boolean;
+  retentionDays: number | null;
 };
 
 export function PublicReport() {
@@ -63,7 +65,7 @@ export function PublicReport() {
             queryKey={["public", token, r.scan.id]}
             showCompetitors={r.showCompetitors}
             loadPoint={r.showCompetitors ? (pointId: string) => get<PointResults>(`/public/reports/${token}/points/${pointId}?scan=${r.scan!.id}`) : undefined}
-            data={{ ...r.scan, business: r.scan.business, competitors: r.competitors }}
+            data={{ ...r.scan, business: r.scan.business, competitors: r.competitors, competitorsExpired: r.competitorsExpired, retentionDays: r.retentionDays }}
           />
         ) : <Card><EmptyState title="No completed scan yet" /></Card>}
         <TrendCharts history={r.history} />

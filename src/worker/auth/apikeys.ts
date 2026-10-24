@@ -55,5 +55,5 @@ export async function authenticateApiKey(db: Db, key: string): Promise<AuthConte
   // The creator left the workspace: the key stops working with them.
   if (!user || !member) return null;
   await db.update(apiKeys).set({ lastUsedAt: nowIso() }).where(eq(apiKeys.id, row.id));
-  return { userId: row.userId, email: user.email, workspaceId: row.workspaceId, role: member.role, via: "apikey" };
+  return { userId: row.userId, email: user.email, workspaceId: row.workspaceId, role: member.role, via: "apikey", apiKeyId: row.id };
 }

@@ -14,6 +14,8 @@ export type AuthContext = {
   workspaceId: string;
   role: Role;
   via: "session" | "access" | "noauth" | "apikey";
+  /** Set when `via` is "apikey"; the per-key rate limit counts on it. */
+  apiKeyId?: string;
 };
 
 const SESSION_DAYS = 30;

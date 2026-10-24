@@ -191,6 +191,9 @@ export const scans = sqliteTable(
     billedCredits: integer("billed_credits").notNull().default(0),
     error: text("error"),
     rawR2Key: text("raw_r2_key"),
+    // Set by the retention job once this scan's per-point competitor rows
+    // (scan_results) are pruned. The grid and metrics are kept forever.
+    resultsPrunedAt: text("results_pruned_at"),
     createdAt: createdAt(),
     completedAt: text("completed_at"),
   },
@@ -434,7 +437,7 @@ export const alerts = sqliteTable(
     previousScanId: text("previous_scan_id").references(() => scans.id, { onDelete: "set null" }),
     businessId: text("business_id").references(() => businesses.id, { onDelete: "cascade" }),
     snapshotId: text("snapshot_id").references(() => gbpSnapshots.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["rank_drop", "data_problem", "rating_drop", "negative_review"] }).notNull(),
+    kind: text("kind", { enum: ["rank_drop", "data_problem", "rating_drop", "negative_review", "job_failed"] }).notNull(),
     severity: text("severity", { enum: ["warning", "critical"] }).notNull(),
     // JSON text, see AlertMetrics in shared/alerts.ts.
     metrics: text("metrics").notNull(),
@@ -464,3 +467,18 @@ export const alertSettings = sqliteTable("alert_settings", {
   // https only; the sender lives in notify/. Treated as a secret.
   webhookUrl: text("webhook_url"),
 });
+
+// ---- rate limiting -----------------------------------------------------------------
+
+// Fixed-window counters, used when no Workers Rate Limiting binding applies
+// (see ratelimit/). key = "<rule>:<subject>", window_start = epoch seconds.
+// Old windows are pruned by the retention job.
+export const rateLimits = sqliteTable(
+  "rate_limits",
+  {
+    key: text("key").notNull(),
+    windowStart: integer("window_start").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] }), index("rate_limits_window_idx").on(t.windowStart)],
+);

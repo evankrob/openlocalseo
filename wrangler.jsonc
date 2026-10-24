@@ -36,7 +36,9 @@
   "r2_buckets": [{ "binding": "R2", "bucket_name": "openlocalseo" }],
 
   // Scan pipeline: "post" jobs submit grid tasks to DataForSEO, "poll" jobs
-  // collect them. Failed jobs land in the dead-letter queue.
+  // collect them. Jobs that exhaust their retries land in the dead-letter
+  // queue, which the same Worker consumes (src/worker/queue.ts): it fails the
+  // scan, refunds held credits and raises an alert.
   "queues": {
     "producers": [{ "binding": "SCAN_QUEUE", "queue": "openlocalseo-scans" }],
     "consumers": [
@@ -46,9 +48,20 @@
         "max_batch_timeout": 2,
         "max_retries": 5,
         "dead_letter_queue": "openlocalseo-scans-dlq"
-      }
+      },
+      { "queue": "openlocalseo-scans-dlq", "max_batch_size": 5, "max_retries": 3 }
     ]
   },
+
+  // Workers Rate Limiting bindings for the per-minute rules (see src/worker/ratelimit).
+  // limit/period are fixed here; period must be 10 or 60. namespace_id is any
+  // integer, unique per rule in your account. Without a binding the Worker falls
+  // back to a D1 counter, so these are optional.
+  "ratelimits": [
+    { "name": "RL_AUTH", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "RL_PUBLIC", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } },
+    { "name": "RL_API_KEY", "namespace_id": "1003", "simple": { "limit": 600, "period": 60 } }
+  ],
 
   // Daily tick; the handler starts any monthly schedule whose next_run_at is
   // due (see src/worker/scheduled.ts).
@@ -73,8 +86,16 @@
       "r2_buckets": [{ "binding": "R2", "bucket_name": "openlocalseo" }],
       "queues": {
         "producers": [{ "binding": "SCAN_QUEUE", "queue": "openlocalseo-scans" }],
-        "consumers": [{ "queue": "openlocalseo-scans", "max_batch_size": 5, "max_batch_timeout": 2, "max_retries": 5, "dead_letter_queue": "openlocalseo-scans-dlq" }]
+        "consumers": [
+          { "queue": "openlocalseo-scans", "max_batch_size": 5, "max_batch_timeout": 2, "max_retries": 5, "dead_letter_queue": "openlocalseo-scans-dlq" },
+          { "queue": "openlocalseo-scans-dlq", "max_batch_size": 5, "max_retries": 3 }
+        ]
       },
+      "ratelimits": [
+        { "name": "RL_AUTH", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } },
+        { "name": "RL_PUBLIC", "namespace_id": "2002", "simple": { "limit": 60, "period": 60 } },
+        { "name": "RL_API_KEY", "namespace_id": "2003", "simple": { "limit": 600, "period": 60 } }
+      ],
       "triggers": { "crons": ["15 6 * * *"] }
     }
   }

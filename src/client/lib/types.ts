@@ -13,9 +13,10 @@ export type AlertSettings = AlertSettingsValues & { webhookConfigured: boolean }
 
 import type { FailedJob } from "@/worker/ops";
 export type { FailedJob };
+import type { ScanQuote } from "@/worker/scans/service";
 import type { GbpQuote } from "@/worker/gbp/service";
 import type { GbpSnapshotView, ReviewView, getGbpOverview } from "@/worker/gbp/queries";
-export type { GbpQuote, GbpSnapshotView, ReviewView };
+export type { GbpQuote, ScanQuote, GbpSnapshotView, ReviewView };
 export type GbpOverview = Awaited<ReturnType<typeof getGbpOverview>> & { quote: GbpQuote; monthlyCostUsd: number };
 export type ReviewPage = { reviews: ReviewView[]; nextCursor: string | null };
 

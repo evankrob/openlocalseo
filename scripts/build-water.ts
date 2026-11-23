@@ -199,7 +199,12 @@ function main() {
   const bytes = encodeWater(cells);
   let stored = 0;
   let storedRings = 0;
-  for (const c of cells.values()) for (const r of c.rings ?? []) (stored += r.length), storedRings++;
+  for (const c of cells.values()) {
+    for (const r of c.rings ?? []) {
+      stored += r.length;
+      storedRings++;
+    }
+  }
   console.log(`stored vertices: ${stored} in ${storedRings} rings (${(bytes.length / stored).toFixed(1)} bytes per vertex)`);
   const gz = gzipSync(bytes, { level: 9 });
   const b64 = Buffer.from(bytes).toString("base64");

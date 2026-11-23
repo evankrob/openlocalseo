@@ -116,7 +116,7 @@ export function TrackerDetail() {
               {active ? "Scan running" : q ? `Run scan now · ${chargeLabel(q, me.config.billingMode)}` : "Run scan now"}
             </Button>
             <p className="max-w-sm text-xs text-muted-foreground sm:text-right" data-testid="run-scan-estimate">
-              {q ? scanBreakdown(q, me.config.billingMode, balance)
+              {q ? scanBreakdown(q, me.config.billingMode, balance, me.config.dataMode)
                 : quote.isError ? `Cost unavailable (could not get a quote). ${t.gridSize * t.gridSize} points on the ${t.queueMode} queue; try again shortly.`
                 : "Getting the cost estimate..."}
             </p>

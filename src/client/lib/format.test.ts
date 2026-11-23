@@ -17,4 +17,12 @@ describe("scan cost labels", () => {
   it("BYOK breakdown is flagged as an upper bound", () => {
     expect(scanBreakdown(quote, "byok")).toContain("Upper-bound DataForSEO estimate");
   });
+  it("BYOK wording does not claim the real cost is lower", () => {
+    expect(scanBreakdown(quote, "byok")).toBe("49 points (7x7) on the standard queue. Upper-bound DataForSEO estimate; the real cost is recorded per call.");
+  });
+  it("mock data mode says nothing is charged", () => {
+    expect(scanBreakdown(quote, "byok", null, "mock")).toMatch(/ Mock data: nothing is charged\.$/);
+    expect(scanBreakdown(quote, "hosted", 5, "mock")).toMatch(/Balance: 5 credits\. Mock data: nothing is charged\.$/);
+    expect(scanBreakdown(quote, "byok", null, "live")).not.toContain("Mock");
+  });
 });

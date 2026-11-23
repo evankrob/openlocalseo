@@ -13,11 +13,12 @@ export const chargeLabel = (q: Pick<ChargeQuote, "chargedUsd" | "credits">, bill
   billingMode === "hosted" ? `${q.credits} credits (${fmtUsd(q.chargedUsd)})` : `~${fmtUsd(q.chargedUsd)}`;
 
 /** Muted line under the run button: points x queue, what is charged, and the hosted balance when known. */
-export function scanBreakdown(q: ChargeQuote, billingMode: "byok" | "hosted", balance?: number | null): string {
+export function scanBreakdown(q: ChargeQuote, billingMode: "byok" | "hosted", balance?: number | null, dataMode?: "mock" | "live"): string {
+  const mock = dataMode === "mock" ? " Mock data: nothing is charged." : "";
   const base = `${q.points} points (${Math.round(Math.sqrt(q.points))}x${Math.round(Math.sqrt(q.points))}) on the ${q.queueMode} queue`;
   if (billingMode === "hosted") {
     const bal = balance == null ? "" : ` Balance: ${balance.toLocaleString()} credits.`;
-    return `${base}. Held now, settled at the real cost.${bal}`;
+    return `${base}. Held now, settled at the real cost.${bal}${mock}`;
   }
-  return `${base}. Upper-bound DataForSEO estimate; the real cost is usually lower.`;
+  return `${base}. Upper-bound DataForSEO estimate; the real cost is recorded per call.${mock}`;
 }

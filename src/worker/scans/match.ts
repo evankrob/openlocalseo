@@ -24,7 +24,11 @@ export function isTargetBusiness(item: MapResult, business: Identity): boolean {
   return normalizeName(item.name) === normalizeName(business.name);
 }
 
-/** Stable identity of a listed business across points and scans. */
-export function businessKey(item: MapResult): string {
-  return item.placeId ?? item.cid ?? `name:${normalizeName(item.name)}`;
+/**
+ * Identity of a listed business across points and scans: place id, else cid.
+ * A result with neither is keyed to its own row id so it never merges with
+ * another point's result: names are not an identity (two shops can share one).
+ */
+export function businessKey(item: MapResult, rowId: string): string {
+  return item.placeId ?? item.cid ?? `row:${rowId}`;
 }

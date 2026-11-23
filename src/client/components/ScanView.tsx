@@ -4,6 +4,7 @@ import { rankLabel } from "@/shared/rank";
 import { cn } from "../lib/cn";
 import { fmtNum, fmtPct } from "../lib/format";
 import type { CompetitorSummary, PointResults, ScanMetrics, ScanViewData } from "../lib/types";
+import { CompetitorOverlay } from "./CompetitorOverlay";
 import { RankLegend, RankMap } from "./RankMap";
 import { Badge, Card, CardHeader, EmptyState, Spinner, Stat, Table, Td, Th } from "./ui";
 
@@ -94,11 +95,14 @@ export function ScanView({
   data,
   loadPoint,
   showCompetitors = true,
+  showOverlay = false,
   queryKey,
 }: {
   data: ScanViewData;
   loadPoint?: (pointId: string) => Promise<PointResults>;
   showCompetitors?: boolean;
+  /** The competitor overlay needs the signed-in API, so only the app turns it on (not the public report). */
+  showOverlay?: boolean;
   queryKey: unknown[];
 }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -122,6 +126,7 @@ export function ScanView({
           </Card>
         )}
       </div>
+      {showCompetitors && showOverlay && <CompetitorOverlay scanId={data.id} data={data} />}
       {showCompetitors && (
         <Card className="print-break">
           <CardHeader title="Competitors" description="Every business seen in this scan, scored over the same grid points. Computed from the same results, at no extra cost." />

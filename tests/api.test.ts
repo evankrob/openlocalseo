@@ -402,6 +402,11 @@ describe("MCP server", () => {
     expect(sc.grid).toHaveLength(5);
     expect(sc.grid[0]).toHaveLength(5);
     expect(sc.competitors).toHaveLength(3);
+    expect(sc.overlay.expired).toBe(false);
+    expect(sc.overlay.competitors).toHaveLength(5);
+    expect(sc.overlay.competitors[0]).toMatchObject({ source: "default", totalPoints: 25 });
+    expect(Object.keys(sc.overlay.competitors[0].headToHead).sort()).toEqual(["losses", "neither", "ties", "wins"]);
+    expect((await mcp(h, key, "tools/call", { name: "get_scan", arguments: { scanId, competitors: 0 } })).json.result.structuredContent.overlay).toBeNull();
     expect(sc.metrics.totalPoints).toBe(25);
 
     const scans = await mcp(h, key, "tools/call", { name: "list_scans", arguments: { trackerId: tracker.json.id } });

@@ -150,6 +150,28 @@ export const trackers = sqliteTable(
   ],
 );
 
+// Per-tracker competitor choices for the overlay: pinned (always shown, max 10)
+// or hidden (never shown). No row = the default top 5. `identity` is the place
+// id / cid identity from src/shared/overlay.ts, so a choice applies to every
+// scan of the tracker. The name is kept for display when a scan lacks the business.
+export const trackerCompetitors = sqliteTable(
+  "tracker_competitors",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    trackerId: text("tracker_id")
+      .notNull()
+      .references(() => trackers.id, { onDelete: "cascade" }),
+    identity: text("identity").notNull(),
+    name: text("name").notNull(),
+    status: text("status", { enum: ["pinned", "hidden"] }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("tracker_competitors_identity_idx").on(t.trackerId, t.identity)],
+);
+
 export const scans = sqliteTable(
   "scans",
   {
@@ -253,6 +275,8 @@ export const scanResults = sqliteTable(
     ratingCount: integer("rating_count"),
     category: text("category"),
     address: text("address"),
+    // As listed by Google; used only to flag possible duplicate listings.
+    phone: text("phone"),
     isTarget: integer("is_target", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [

@@ -123,6 +123,16 @@ body,
 .rank-pin[data-tier="3"] { background: var(--rank-3); color: var(--rank-text-dark); }
 .rank-pin[data-tier="4"] { background: var(--rank-4); color: var(--rank-text-dark); }
 .rank-pin[data-tier="none"] { background: var(--rank-none); color: var(--rank-text-light); }
+/* client vs competitor: green / red / grey, each also carries a symbol */
+.rank-pin[data-tier="win"] { background: var(--rank-1); color: var(--rank-text-light); }
+.rank-pin[data-tier="loss"] { background: var(--rank-none); color: var(--rank-text-light); }
+.rank-pin[data-tier="even"] { background: #9ca3af; color: var(--rank-text-dark); }
+.point-card { font-size: 12px; line-height: 1.35; max-width: 240px; white-space: normal; }
+.point-card-list { margin: 4px 0 0; padding: 0; list-style: none; }
+.point-card-list li { margin: 1px 0; }
+.point-card-list li.you { font-weight: 700; }
+.point-card-list b { display: inline-block; min-width: 1.4em; }
+.leaflet-tooltip.point-card-tip { white-space: normal; }
 .rank-pin[data-tier="failed"] { background: var(--card); color: var(--destructive); border: 2px dashed var(--destructive); }
 .rank-pin[data-selected="true"] { outline: 3px solid var(--foreground); outline-offset: 1px; }
 .rank-pin.small { width: 22px; height: 22px; font-size: 10px; }

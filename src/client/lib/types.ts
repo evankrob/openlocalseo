@@ -49,3 +49,6 @@ export type ScanViewData = {
   competitorsExpired?: boolean;
   retentionDays?: number | null;
 };
+
+import type { CompetitorSettingsView, OverlayCandidate, OverlayCompetitor, ScanOverlay } from "@/worker/scans/overlay";
+export type { CompetitorSettingsView, OverlayCandidate, OverlayCompetitor, ScanOverlay };

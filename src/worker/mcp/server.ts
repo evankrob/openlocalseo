@@ -14,6 +14,8 @@ import type { AuthContext } from "../auth/accounts";
 import { getGbpOverview, listReviews } from "../gbp/queries";
 import { throttleScans } from "../ratelimit";
 import { createScan } from "../scans/service";
+import { getScanOverlay } from "../scans/overlay";
+import { asScanId } from "@/shared/ids";
 import { getScanDetail, listTrackerSummaries, listWorkspaceScans } from "../scans/queries";
 import type { ProcessDeps } from "../scans/process";
 
@@ -145,7 +147,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
     {
       title: "Get scan",
       description:
-        "Get one scan: status, metrics, a grid of ranks (rows north to south, columns west to east; null = not found in the top 20) and the top competitors.",
+        "Get one scan: status, metrics, a grid of ranks (rows north to south, columns west to east; null = not found in the top 20) and the top competitors. `overlay` lists the tracker's chosen competitors (default top 5 by top-3 appearances plus any pinned, hidden ones removed) with average rank (not found = 21), SoLV, points found and head-to-head wins/losses/ties against the client.",
       inputSchema: {
         scanId: z.string(),
         competitors: z.number().int().min(0).max(25).default(10).describe("How many top competitors to include."),
@@ -160,6 +162,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       const competitors = detail.competitors.slice(0, args.competitors).map((c) => ({
         name: c.name, atrp: c.atrp, arp: c.arp, solv: c.solv, rating: c.rating, ratingCount: c.ratingCount,
       }));
+      const overlay = detail.scan.status === "completed" && args.competitors > 0 ? await getScanOverlay(deps.db, ws, asScanId(args.scanId)) : null;
       const s = detail.scan;
       const summary =
         s.status === "completed"
@@ -174,6 +177,21 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
         metrics: detail.metrics,
         grid,
         competitors,
+        overlay: overlay && {
+          // expired: retention removed the per-point results; the grid and metrics above remain
+          expired: overlay.expired,
+          competitors: overlay.competitors.map((c) => ({
+            name: c.name,
+            source: c.source,
+            atrp: c.metrics.atrp,
+            arp: c.metrics.arp,
+            solv: c.metrics.solv,
+            foundPoints: c.metrics.foundPoints,
+            totalPoints: c.metrics.totalPoints,
+            headToHead: c.headToHead,
+            possibleDuplicateOf: c.possibleDuplicateOf,
+          })),
+        },
         error: s.error,
         url: `${baseUrl}/scans/${s.id}`,
       });

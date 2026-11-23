@@ -312,11 +312,12 @@ function interpretResults(point: PointRow, items: MapResult[], business: Busines
   for (const item of items) {
     const isTarget = isTargetBusiness(item, business);
     if (isTarget && (rank === null || item.rank < rank)) rank = item.rank;
+    const id = newId();
     rows.push({
-      id: newId(),
+      id,
       pointId: point.id,
       rank: item.rank,
-      businessKey: businessKey(item),
+      businessKey: businessKey(item, id),
       name: item.name,
       placeId: item.placeId,
       cid: item.cid,
@@ -325,6 +326,7 @@ function interpretResults(point: PointRow, items: MapResult[], business: Busines
       ratingCount: item.ratingCount,
       category: item.category,
       address: item.address,
+      phone: item.phone,
       isTarget,
     });
   }

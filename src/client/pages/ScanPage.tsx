@@ -29,7 +29,7 @@ export function ScanPage() {
       {scan.status === "completed" || q.data.points.some((p) => p.status === "completed") ? (
         <>
           <OtherListingsNote listings={q.data.otherListings} />
-          <ScanView data={toViewData(q.data)} loadPoint={loadScanPoint(id)} queryKey={["scan", id]} />
+          <ScanView showOverlay data={toViewData(q.data)} loadPoint={loadScanPoint(id)} queryKey={["scan", id]} />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">Results appear when the scan finishes.</p>

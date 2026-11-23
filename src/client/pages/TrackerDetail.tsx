@@ -150,7 +150,7 @@ function LatestScan({ scanId }: { scanId: string }) {
     <>
       <p className="text-sm text-muted-foreground">Scanned {fmtDateTime(q.data.scan.createdAt)} &middot; <Link className="underline" to={`/scans/${scanId}`}>open scan</Link></p>
       <OtherListingsNote listings={q.data.otherListings} />
-      <ScanView data={toViewData(q.data)} loadPoint={loadScanPoint(scanId)} queryKey={["scan", scanId]} />
+      <ScanView showOverlay data={toViewData(q.data)} loadPoint={loadScanPoint(scanId)} queryKey={["scan", scanId]} />
     </>
   );
 }

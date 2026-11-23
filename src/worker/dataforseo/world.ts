@@ -27,6 +27,7 @@ export type WorldBusiness = {
   ratingCount: number;
   category: string;
   address: string;
+  phone: string;
   /** 0-1: how strongly Google favors this business regardless of distance. */
   prominence: number;
 };
@@ -65,8 +66,15 @@ function categoryFor(keyword: string): { category: string; noun: string } {
   if (/dent/.test(k)) return { category: "Dentist", noun: "Dental" };
   if (/pizza/.test(k)) return { category: "Pizza restaurant", noun: "Pizza" };
   if (/bak|bread/.test(k)) return { category: "Bakery", noun: "Bakery" };
+  if (/appliance/.test(k)) return { category: "Appliance repair service", noun: "Appliance" };
   if (/lawyer|attorney/.test(k)) return { category: "Law firm", noun: "Legal" };
   return { category: "Business", noun: "Services" };
+}
+
+/** A fictional 555-01xx style number, derived from the name so it never disturbs the random stream. */
+export function fictionalPhone(name: string): string {
+  const h = hash32(`phone:${name}`);
+  return `(919) 555-${String(1000 + (h % 9000))}`;
 }
 
 const WORLD_SIZE = 44;
@@ -102,9 +110,11 @@ export function buildWorld(keyword: string, center: DemoCenter, hints?: MockHint
       ratingCount: Math.floor(20 + Math.pow(rand(), 2.2) * 1400),
       category,
       address: `${100 + Math.floor(rand() * 800)} ${STREETS[Math.floor(rand() * STREETS.length)]}, Fictionville, NC 27999`,
+      phone: fictionalPhone(name),
       prominence: 0.25 + rand() * 0.55,
     });
   }
+  addNearDuplicate(world, keyword);
   const target = hints?.target;
   if (target) {
     // Replace any generated business sharing the name or place id, then add the
@@ -121,11 +131,42 @@ export function buildWorld(keyword: string, center: DemoCenter, hints?: MockHint
       ratingCount: 412,
       category,
       address: "101 Fictional Ave, Fictionville, NC 27999",
+      phone: fictionalPhone(target.name),
       prominence: target.prominence ?? 0.62,
     });
     return filtered;
   }
   return world;
+}
+
+/**
+ * Real maps data often has two listings for one shop (a moved or re-created
+ * listing). Adds one: the strongest generated business gets a twin with a
+ * slightly different name, its own place id and cid, the same phone and a spot
+ * a few doors down, so the "possible duplicate" flag has something to show.
+ * Appliance searches get the classic spelling pair.
+ */
+function addNearDuplicate(world: WorldBusiness[], keyword: string) {
+  let base = world[0];
+  for (const b of world) if (b.prominence > (base?.prominence ?? 0)) base = b;
+  if (!base) return;
+  const appliance = /appliance/.test(keyword.toLowerCase());
+  if (appliance) base.name = "Appliance Workcenter";
+  base.prominence = Math.max(base.prominence, 0.7);
+  base.phone = fictionalPhone(base.name);
+  const twinName = appliance ? "Appliance Work Center" : `${base.name} LLC`;
+  world.push({
+    ...base,
+    name: twinName,
+    placeId: `${base.placeId}dup`,
+    cid: `${base.cid.slice(0, -3)}999`,
+    domain: `${twinName.toLowerCase().replace(/[^a-z0-9]+/g, "")}.example`,
+    lat: base.lat + 0.0006,
+    lng: base.lng + 0.0004,
+    ratingCount: Math.max(3, Math.round(base.ratingCount / 8)),
+    address: base.address.replace(/^\d+/, (n) => String(Number(n) + 2)),
+    prominence: base.prominence - 0.08,
+  });
 }
 
 /** Businesses in the order Google would list them for a searcher at `point`. */

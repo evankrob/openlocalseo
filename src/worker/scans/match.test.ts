@@ -4,7 +4,7 @@ import type { MapResult } from "../dataforseo/types";
 
 const item = (over: Partial<MapResult> = {}): MapResult => ({
   rank: 1, name: "Maple & Ember Coffee Roasters", placeId: "p1", cid: "c1", domain: "mapleember.example",
-  rating: 4.8, ratingCount: 10, category: null, address: null, ...over,
+  rating: 4.8, ratingCount: 10, category: null, address: null, phone: null, ...over,
 });
 
 describe("isTargetBusiness", () => {
@@ -25,9 +25,11 @@ describe("isTargetBusiness", () => {
 });
 
 describe("businessKey", () => {
-  it("prefers place id, then cid, then a normalized name", () => {
-    expect(businessKey(item())).toBe("p1");
-    expect(businessKey(item({ placeId: null }))).toBe("c1");
-    expect(businessKey(item({ placeId: null, cid: null }))).toBe("name:mapleembercoffeeroasters");
+  it("prefers place id, then cid, then the row itself (never the name)", () => {
+    expect(businessKey(item(), "r1")).toBe("p1");
+    expect(businessKey(item({ placeId: null }), "r1")).toBe("c1");
+    // no id at all: keyed to the row, never to the name, so it cannot merge across points
+    expect(businessKey(item({ placeId: null, cid: null }), "r1")).toBe("row:r1");
+    expect(businessKey(item({ placeId: null, cid: null }), "r2")).toBe("row:r2");
   });
 });

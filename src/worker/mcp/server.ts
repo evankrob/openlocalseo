@@ -13,6 +13,7 @@ import { listAlerts } from "../alerts";
 import type { AuthContext } from "../auth/accounts";
 import { getGbpOverview, listReviews } from "../gbp/queries";
 import { throttleScans } from "../ratelimit";
+import { previewTrackerSkips } from "../scans/preview";
 import { createScan } from "../scans/service";
 import { getScanDetail, listTrackerSummaries, listWorkspaceScans } from "../scans/queries";
 import type { ProcessDeps } from "../scans/process";
@@ -79,6 +80,26 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
   );
 
   server.registerTool(
+    "quote_scan",
+    {
+      title: "Quote scan",
+      description:
+        "Preview what a scan of this tracker would cost and which grid points it would skip (on open water, outside the service area, or skipped by the user). Only the scanned points are charged. Read-only: starts nothing and spends nothing. Show the user this before run_scan.",
+      inputSchema: { trackerId: z.string().describe("Tracker id from list_trackers.") },
+      annotations: { readOnlyHint: true },
+    },
+    guard(async (args: { trackerId: string }) => {
+      const preview = await previewTrackerSkips(deps, ws, asTrackerId(args.trackerId));
+      const { quote, summary } = preview;
+      const skipped = preview.points.filter((p) => p.skip).map((p) => ({ row: p.row, col: p.col, reason: p.skip }));
+      return ok(
+        `${quote.points} of ${quote.gridPoints} points would be scanned (${quote.skippedPoints} skipped: ${summary.byReason.water} water, ${summary.byReason.outside_area} outside area, ${summary.byReason.user} user); ${quote.queueMode} queue, estimated $${quote.chargedUsd}.`,
+        { quote, skipped, serviceArea: preview.serviceArea },
+      );
+    }),
+  );
+
+  server.registerTool(
     "run_scan",
     {
       title: "Run scan",
@@ -97,8 +118,8 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
         maxCostUsd: args.maxCostUsd,
       });
       return ok(
-        `Scan ${scanId} started (${quote.points} points, ${quote.queueMode} queue, estimated $${quote.chargedUsd}). Poll get_scan until it completes.`,
-        { scanId, status: "queued", estimatedCostUsd: quote.chargedUsd, points: quote.points, url: `${baseUrl}/scans/${scanId}` },
+        `Scan ${scanId} started (${quote.points} points scanned, ${quote.skippedPoints} skipped, ${quote.queueMode} queue, estimated $${quote.chargedUsd}). Poll get_scan until it completes.`,
+        { scanId, status: "queued", estimatedCostUsd: quote.chargedUsd, points: quote.points, skippedPoints: quote.skippedPoints, url: `${baseUrl}/scans/${scanId}` },
       );
     }),
   );
@@ -128,6 +149,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
         solv: s.solv,
         foundPoints: s.foundPoints,
         totalPoints: s.totalPoints,
+        skippedPoints: s.skippedPoints,
       }));
       return ok(
         scans.length
@@ -145,7 +167,7 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
     {
       title: "Get scan",
       description:
-        "Get one scan: status, metrics, a grid of ranks (rows north to south, columns west to east; null = not found in the top 20) and the top competitors.",
+        "Get one scan: status, metrics, a grid of ranks (rows north to south, columns west to east; null = not found in the top 20, or skipped: see skippedGrid) and the top competitors. Skipped points (water, outside area, user) are left out of every metric.",
       inputSchema: {
         scanId: z.string(),
         competitors: z.number().int().min(0).max(25).default(10).describe("How many top competitors to include."),
@@ -156,14 +178,18 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
       const detail = await getScanDetail(deps.db, args.scanId, { workspaceId: ws });
       const size = detail.scan.gridSize;
       const grid = emptyGrid<number | null>(size, null);
-      for (const p of detail.points) setCell(grid, p.row, p.col, p.rank);
+      const skippedGrid = emptyGrid<string | null>(size, null);
+      for (const p of detail.points) {
+        setCell(grid, p.row, p.col, p.rank);
+        setCell(skippedGrid, p.row, p.col, p.skipReason);
+      }
       const competitors = detail.competitors.slice(0, args.competitors).map((c) => ({
         name: c.name, atrp: c.atrp, arp: c.arp, solv: c.solv, rating: c.rating, ratingCount: c.ratingCount,
       }));
       const s = detail.scan;
       const summary =
         s.status === "completed"
-          ? `${detail.business.name} / "${s.keyword}": ATRP ${s.atrp}, ARP ${s.arp ?? "n/a"}, SoLV ${s.solv}% (found at ${s.foundPoints}/${s.totalPoints} points).`
+          ? `${detail.business.name} / "${s.keyword}": ATRP ${s.atrp}, ARP ${s.arp ?? "n/a"}, SoLV ${s.solv}% (found at ${s.foundPoints}/${s.totalPoints} points scanned${s.skippedPoints ? `; ${s.skippedPoints} more skipped` : ""}).`
           : `Scan is ${s.status}${s.error ? `: ${s.error}` : ""}.`;
       return ok(summary, {
         scanId: s.id,
@@ -173,6 +199,8 @@ export function buildMcpServer({ auth, deps, baseUrl }: Ctx): McpServer {
         createdAt: s.createdAt,
         metrics: detail.metrics,
         grid,
+        skippedGrid,
+        skippedPoints: s.skippedPoints,
         competitors,
         error: s.error,
         url: `${baseUrl}/scans/${s.id}`,

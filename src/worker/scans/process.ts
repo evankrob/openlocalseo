@@ -124,10 +124,11 @@ async function handlePost(deps: ProcessDeps, scanId: string) {
   }
 
   const scan = (await loadScan(db, scanId))!;
+  // Skipped points (water, outside area, user) stay "skipped": they are never posted, searched or charged.
   const points = await db
     .select()
     .from(scanPoints)
-    .where(eq(scanPoints.scanId, scanId))
+    .where(and(eq(scanPoints.scanId, scanId), eq(scanPoints.status, "pending")))
     .orderBy(scanPoints.row, scanPoints.col);
 
   if (scan.queueMode === "live") {
@@ -359,7 +360,8 @@ async function persistPointResults(
 /** Finishes the scan once no point is still waiting. Safe to call repeatedly. */
 async function finalizeIfDone(deps: ProcessDeps, scanId: string) {
   const { db } = deps;
-  const points = await db.select().from(scanPoints).where(eq(scanPoints.scanId, scanId));
+  // Skipped points are final from the start: they are not counted as completed or failed.
+  const points = (await db.select().from(scanPoints).where(eq(scanPoints.scanId, scanId))).filter((p) => p.status !== "skipped");
   if (points.some((p) => p.status === "pending" || p.status === "posted")) return;
 
   const completed = points.filter((p) => p.status === "completed");

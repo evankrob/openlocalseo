@@ -5,7 +5,9 @@ import { AppError } from "@/shared/errors";
 import { z } from "zod";
 import type { Db } from "../db";
 import { queryRows } from "../db/raw";
+import type { BusinessType, Exclusion, SkipOverrides, SkipReason } from "@/shared/skip/plan";
 import { businesses, scanPoints, scanResults, scans, trackers } from "../db/schema";
+import { rulesOf } from "./skip";
 
 type ScanRow = typeof scans.$inferSelect;
 
@@ -20,7 +22,9 @@ export type ScanListItem = {
   solv: number | null;
   foundPoints: number | null;
   top3Points: number | null;
+  /** Points scanned (and charged); skipped points are not counted. */
   totalPoints: number;
+  skippedPoints: number;
   gridSize: number;
   queueMode: ScanRow["queueMode"];
   searchType: ScanRow["searchType"];
@@ -40,6 +44,7 @@ const listColumns = {
   foundPoints: scans.foundPoints,
   top3Points: scans.top3Points,
   totalPoints: scans.totalPoints,
+  skippedPoints: scans.skippedPoints,
   gridSize: scans.gridSize,
   queueMode: scans.queueMode,
   searchType: scans.searchType,
@@ -79,9 +84,13 @@ export async function listWorkspaceScans(
 export type TrackerSummary = {
   id: string;
   keyword: string;
-  business: { id: string; name: string };
+  business: { id: string; name: string; businessType: BusinessType };
   gridSize: number;
   radiusKm: number;
+  /** Skip rules for future scans (finished scans keep what they ran with). */
+  autoSkipWater: boolean;
+  skipOverrides: SkipOverrides;
+  exclusion: Exclusion;
   radiusUnit: "km" | "mi";
   zoom: number;
   searchType: "maps" | "local_finder";
@@ -111,7 +120,7 @@ async function latestScanIds(db: Db, workspaceId: string, onlyCompleted: boolean
 
 export async function listTrackerSummaries(db: Db, workspaceId: string): Promise<TrackerSummary[]> {
   const rows = await db
-    .select({ tracker: trackers, business: { id: businesses.id, name: businesses.name } })
+    .select({ tracker: trackers, business: { id: businesses.id, name: businesses.name, businessType: businesses.businessType } })
     .from(trackers)
     .innerJoin(businesses, eq(businesses.id, trackers.businessId))
     .where(and(eq(trackers.workspaceId, workspaceId), sql`${trackers.archivedAt} IS NULL`))
@@ -150,6 +159,9 @@ export async function listTrackerSummaries(db: Db, workspaceId: string): Promise
     business,
     gridSize: t.gridSize,
     radiusKm: t.radiusKm,
+    autoSkipWater: rulesOf(t).skipWater,
+    skipOverrides: rulesOf(t).overrides,
+    exclusion: rulesOf(t).exclusion,
     radiusUnit: t.radiusUnit,
     zoom: t.zoom,
     searchType: t.searchType,
@@ -188,6 +200,8 @@ export type ScanDetail = {
     lat: number;
     lng: number;
     status: string;
+    /** Why a "skipped" point was not scanned; null for scanned points. */
+    skipReason: SkipReason | null;
     rank: number | null;
     error: string | null;
   }>;
@@ -228,6 +242,7 @@ export async function getScanDetail(
       lat: scanPoints.lat,
       lng: scanPoints.lng,
       status: scanPoints.status,
+      skipReason: scanPoints.skipReason,
       rank: scanPoints.rank,
       error: scanPoints.error,
     })
@@ -261,6 +276,7 @@ export async function getScanDetail(
       foundPoints: scan.foundPoints,
       top3Points: scan.top3Points,
       totalPoints: scan.totalPoints,
+      skippedPoints: scan.skippedPoints,
       gridSize: scan.gridSize,
       queueMode: scan.queueMode,
       searchType: scan.searchType,
@@ -368,7 +384,7 @@ export async function getPointResults(
         .where(eq(scanResults.pointId, pointId))
         .orderBy(scanResults.rank);
   return {
-    point: { id: point.id, row: point.row, col: point.col, lat: point.lat, lng: point.lng, rank: point.rank, status: point.status },
+    point: { id: point.id, row: point.row, col: point.col, lat: point.lat, lng: point.lng, rank: point.rank, status: point.status, skipReason: point.skipReason },
     results,
     // Retention pruned the competitor rows; the point's own rank above remains.
     competitorsExpired: expired,

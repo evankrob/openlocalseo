@@ -6,6 +6,7 @@ import { toKm, validateGridInput } from "@/shared/grid";
 import { AppError } from "@/shared/errors";
 import { asBusinessId, asTrackerId, type BusinessId, type TrackerId, type WorkspaceId } from "@/shared/ids";
 import type { BusinessInput, TrackerInput, TrackerPatch } from "@/shared/schemas";
+import { EMPTY_OVERRIDES, NO_EXCLUSION, type BusinessType } from "@/shared/skip/plan";
 import type { Db } from "./db";
 import { businesses, trackers } from "./db/schema";
 import { newId } from "./lib";
@@ -89,7 +90,14 @@ export async function createBusiness(db: Db, workspaceId: WorkspaceId, input: Bu
     category: input.category ?? null,
     lat: input.lat,
     lng: input.lng,
+    businessType: input.businessType ?? "storefront",
   });
+  return getBusiness(db, workspaceId, id);
+}
+
+export async function setBusinessType(db: Db, workspaceId: WorkspaceId, id: BusinessId, businessType: BusinessType) {
+  await getBusiness(db, workspaceId, id);
+  await db.update(businesses).set({ businessType }).where(and(eq(businesses.id, id), eq(businesses.workspaceId, workspaceId)));
   return getBusiness(db, workspaceId, id);
 }
 
@@ -128,6 +136,9 @@ export async function createTracker(db: Db, workspaceId: WorkspaceId, input: Tra
     device: input.device,
     languageCode: input.languageCode,
     depth: input.depth,
+    autoSkipWater: input.autoSkipWater ?? true,
+    skipOverrides: input.skipOverrides ?? EMPTY_OVERRIDES,
+    skipExclusion: input.exclusion ?? NO_EXCLUSION,
     scheduleFrequency: input.schedule.frequency,
     scheduleDay: input.schedule.day,
     nextRunAt: input.schedule.frequency === "monthly" ? nextMonthlyRun(now, input.schedule.day).toISOString() : null,
@@ -156,6 +167,16 @@ export async function updateTracker(db: Db, workspaceId: WorkspaceId, id: Tracke
   if (patch.queueMode !== undefined) set.queueMode = patch.queueMode;
   if (patch.device !== undefined) set.device = patch.device;
   if (patch.languageCode !== undefined) set.languageCode = patch.languageCode;
+  if (patch.autoSkipWater !== undefined) set.autoSkipWater = patch.autoSkipWater;
+  if (patch.exclusion !== undefined) set.skipExclusion = patch.exclusion;
+  if (patch.skipOverrides !== undefined) set.skipOverrides = patch.skipOverrides;
+  // Overrides are keyed by grid cell, so they mean nothing once the grid moves or changes shape.
+  const gridChanged =
+    (set.gridSize !== undefined && set.gridSize !== current.gridSize) ||
+    (set.radiusKm !== undefined && set.radiusKm !== current.radiusKm) ||
+    (set.centerLat !== undefined && set.centerLat !== current.centerLat) ||
+    (set.centerLng !== undefined && set.centerLng !== current.centerLng);
+  if (gridChanged && patch.skipOverrides === undefined) set.skipOverrides = EMPTY_OVERRIDES;
   if (patch.schedule) {
     set.scheduleFrequency = patch.schedule.frequency;
     set.scheduleDay = patch.schedule.day;

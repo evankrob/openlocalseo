@@ -6,15 +6,25 @@ import { sql } from "drizzle-orm";
 import type { Db } from "../db";
 import { execRaw } from "../db/raw";
 
-export type PointInsert = { id: string; row: number; col: number; lat: number; lng: number };
+export type PointInsert = {
+  id: string;
+  row: number;
+  col: number;
+  lat: number;
+  lng: number;
+  /** Set for points the scan will not search: they are stored as "skipped" and never sent to the provider. */
+  skipReason?: "water" | "outside_area" | "user" | null;
+};
 
 export async function insertPoints(db: Db, scanId: string, points: PointInsert[]) {
   if (points.length === 0) return;
   await execRaw(db, sql`
-    INSERT INTO scan_points (id, scan_id, "row", "col", lat, lng)
+    INSERT INTO scan_points (id, scan_id, "row", "col", lat, lng, status, skip_reason)
     SELECT json_extract(j.value, '$.id'), ${scanId}, json_extract(j.value, '$.row'),
-           json_extract(j.value, '$.col'), json_extract(j.value, '$.lat'), json_extract(j.value, '$.lng')
-    FROM json_each(${JSON.stringify(points)}) AS j`);
+           json_extract(j.value, '$.col'), json_extract(j.value, '$.lat'), json_extract(j.value, '$.lng'),
+           CASE WHEN json_extract(j.value, '$.skipReason') IS NULL THEN 'pending' ELSE 'skipped' END,
+           json_extract(j.value, '$.skipReason')
+    FROM json_each(${JSON.stringify(points.map((p) => ({ ...p, skipReason: p.skipReason ?? null })))}) AS j`);
 }
 
 export type PointUpdate = {

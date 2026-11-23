@@ -4,8 +4,8 @@ import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom
 import { diffMetrics } from "@/shared/metrics";
 import { del, get, patch, post } from "../lib/api";
 import { cn } from "../lib/cn";
-import { fmtDateTime, fmtNum, fmtPct, fmtUsd } from "../lib/format";
-import type { Me, PointResults, ScanDetail, ScanListItem, ScanViewData, TrackerSummary } from "../lib/types";
+import { chargeLabel, fmtDateTime, fmtNum, fmtPct, fmtUsd, scanBreakdown } from "../lib/format";
+import type { Me, PointResults, ScanDetail, ScanListItem, ScanQuote, ScanViewData, TrackerSummary } from "../lib/types";
 import { RankLegend, RankMap } from "../components/RankMap";
 import { ScanView, OtherListingsNote } from "../components/ScanView";
 import { TrendCharts } from "../components/TrendCharts";
@@ -82,19 +82,46 @@ export function TrackerDetail() {
   const latest = completed[0];
 
   const refresh = () => { qc.invalidateQueries({ queryKey: ["tracker", id] }); qc.invalidateQueries({ queryKey: ["trackers"] }); };
-  const run = useMutation({ mutationFn: () => post(`/trackers/${id}/scans`, {}), onSuccess: refresh });
+  const hosted = me.config.billingMode === "hosted";
+  const gridSize = tracker.data?.gridSize;
+  const queueMode = tracker.data?.queueMode;
+  // Server quote: the same function createScan uses for the hold.
+  const quote = useQuery({
+    queryKey: ["estimate", gridSize, queueMode],
+    queryFn: () => post<ScanQuote>("/estimate", { gridSize, queueMode }),
+    enabled: gridSize !== undefined && queueMode !== undefined,
+    staleTime: 60_000,
+  });
+  const usage = useQuery({ queryKey: ["usage"], queryFn: () => get<{ credits: { balance: number } | null }>("/usage"), enabled: hosted });
+  // The quote the user sees is also the approved ceiling, so the charge cannot be higher.
+  const run = useMutation({
+    mutationFn: (maxCostUsd: number) => post(`/trackers/${id}/scans`, { maxCostUsd }),
+    onSuccess: () => { refresh(); qc.invalidateQueries({ queryKey: ["usage"] }); },
+  });
 
   if (tracker.isLoading) return <Spinner />;
   if (!tracker.data) return <ErrorNote error={tracker.error ?? new Error("Tracker not found")} />;
   const t = tracker.data;
-  const hosted = me.config.billingMode === "hosted";
+  const q = quote.data;
+  const balance = usage.data?.credits?.balance ?? null;
 
   return (
     <>
       <PageHeader
         title={<>{t.business.name} <span className="font-normal text-muted-foreground">&ldquo;{t.keyword}&rdquo;</span></>}
         description={`${t.gridSize}x${t.gridSize} grid, ${t.radiusKm.toFixed(1)} km radius, ${t.searchType === "maps" ? "Google Maps" : "Local Finder"}, ${t.queueMode} queue`}
-        actions={<Button disabled={!!active || run.isPending} onClick={() => run.mutate()}>{active ? "Scan running" : "Run scan now"}</Button>}
+        actions={
+          <div className="flex w-full flex-col gap-1.5 sm:w-auto sm:items-end" data-testid="run-scan">
+            <Button className="max-w-full whitespace-normal" disabled={!!active || run.isPending || !q} onClick={() => q && run.mutate(q.chargedUsd)}>
+              {active ? "Scan running" : q ? `Run scan now · ${chargeLabel(q, me.config.billingMode)}` : "Run scan now"}
+            </Button>
+            <p className="max-w-sm text-xs text-muted-foreground sm:text-right" data-testid="run-scan-estimate">
+              {q ? scanBreakdown(q, me.config.billingMode, balance, me.config.dataMode)
+                : quote.isError ? `Cost unavailable (could not get a quote). ${t.gridSize * t.gridSize} points on the ${t.queueMode} queue; try again shortly.`
+                : "Getting the cost estimate..."}
+            </p>
+          </div>
+        }
       />
       <ErrorNote error={run.error} />
       {active && <ScanProgress scanId={active.id} onDone={refresh} />}

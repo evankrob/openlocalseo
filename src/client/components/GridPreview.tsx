@@ -8,17 +8,14 @@ import { circleShape } from "@/shared/skip/geo";
 import { SKIP_REASON_LABEL, type Exclusion, type PlannedPoint } from "@/shared/skip/plan";
 import { OSM_ATTRIBUTION, OSM_TILES } from "./RankMap";
 
-const SKIP_SHORT = { water: "water", outside_area: "outside area", user: "user" } as const;
-
 function planPinHtml(p: PlannedPoint): string {
   const skipped = p.skip !== null;
-  const label = p.skip ? `<span class="pin-skip-label">skipped:<br>${SKIP_SHORT[p.skip]}</span>` : "";
   const hint = skipped
     ? `${SKIP_REASON_LABEL[p.skip ?? "user"]}. Click to scan this point anyway.`
     : p.override === "include"
       ? "Scanned (you switched it back on). Click to undo."
       : "Will be scanned. Click to skip this point.";
-  return `<div class="plan-pin" data-skip="${skipped}" data-override="${p.override ?? ""}" title="${hint}">${skipped ? "&ndash;" : ""}${label}</div>`;
+  return `<div class="plan-pin" data-skip="${skipped}" data-override="${p.override ?? ""}" title="${hint}">${skipped ? "&ndash;" : ""}</div>`;
 }
 
 export function GridPreview({
@@ -114,6 +111,7 @@ export function GridPreview({
     const key = `${size}:${radiusKm}`;
     if (fittedFor.current !== key) {
       fittedFor.current = key;
+      instance.invalidateSize();
       instance.fitBounds(bounds);
     } else if (!instance.getBounds().contains(bounds.getCenter())) {
       instance.panTo([center.lat, center.lng]);

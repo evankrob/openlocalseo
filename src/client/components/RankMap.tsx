@@ -78,10 +78,12 @@ export function RankMap({
     const group = layer.current;
     if (!instance || !group) return;
     group.clearLayers();
-    const size = small ? 22 : 30;
+    // On a narrow map (phones) pins sit too close for text labels: use compact pins, label stays in the tooltip.
+    const compact = !!small || (el.current?.clientWidth ?? 1000) < 520;
+    const size = compact ? 22 : 30;
     for (const point of points) {
       const marker = L.marker([point.lat, point.lng], {
-        icon: L.divIcon({ className: "", html: pinHtml(point, point.id === selectedId, !!small), iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
+        icon: L.divIcon({ className: "", html: pinHtml(point, point.id === selectedId, compact), iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
         keyboard: false,
       });
       marker.on("click", () => onSelectRef.current?.(point.id));

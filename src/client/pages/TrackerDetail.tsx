@@ -107,9 +107,9 @@ export function TrackerDetail() {
         <Card className="border-destructive/40 px-5 py-3 text-sm"><Badge tone="danger" className="mr-2">Last scan failed</Badge>{scans.data[0].error}</Card>
       )}
 
-      <div className="no-print flex gap-1 border-b border-border" role="tablist">
+      <div className="no-print flex gap-1 overflow-x-auto border-b border-border" role="tablist">
         {([["latest", "Latest scan"], ["history", "History & trends"], ["compare", "Compare"], ["points", "Grid points"], ["share", "Client report"], ["settings", "Schedule"]] as const).map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={cn("-mb-px border-b-2 px-4 py-2 text-sm", tab === key ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>{label}</button>
+          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={cn("-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm", tab === key ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>{label}</button>
         ))}
       </div>
 

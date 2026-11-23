@@ -4,6 +4,7 @@ import { createApp, type AppOptions } from "@/worker/app";
 import type { Env } from "@/worker/env";
 import { eq } from "drizzle-orm";
 import { alerts, scans } from "@/worker/db/schema";
+import { GRID_MAX_SIZE, GRID_MIN_SIZE } from "@/shared/grid";
 import { at, first, must } from "@/shared/assert";
 import { createHarness, type Harness } from "./helpers/harness";
 
@@ -31,6 +32,52 @@ function client(h: Harness, env: Partial<Env> = {}, accessKeys?: AppOptions["acc
   };
   return { call, setHeaders: (h2: Record<string, string>) => (headers = h2), clearCookie: () => (cookie = "") };
 }
+
+describe("POST /api/estimate matches what createScan holds", () => {
+  const trackerBody = (businessId: string, gridSize: number, queueMode: string) => ({
+    businessId, keyword: "coffee shop", gridSize, queueMode, radius: { value: 3, unit: "mi" }, schedule: { frequency: "none" },
+  });
+
+  it("BYOK: the quote equals the scan's estimate for every tracker size, including the maximum", async () => {
+    const h = await createHarness({ env: { AUTH_MODE: "local_noauth" } });
+    const { call } = client(h);
+    const biz = await call("POST", "/api/businesses", business);
+    for (const [gridSize, queueMode] of [[3, "standard"], [7, "live"], [13, "priority"]] as const) {
+      const tracker = await call("POST", "/api/trackers", trackerBody(biz.json.id, gridSize, queueMode));
+      expect(tracker.status).toBe(201);
+      const est = await call("POST", "/api/estimate", { gridSize: tracker.json.gridSize, queueMode: tracker.json.queueMode });
+      expect(est.json.points).toBe(gridSize * gridSize);
+      // The quote is also the ceiling the UI sends: it must be accepted as is.
+      const run = await call("POST", `/api/trackers/${tracker.json.id}/scans`, { maxCostUsd: est.json.chargedUsd });
+      expect(run.status).toBe(202);
+      const [scan] = await h.db.select().from(scans).where(eq(scans.id, run.json.scanId));
+      expect(scan?.estimatedCostUsd).toBe(est.json.providerCostUsd);
+      expect(scan?.reservedCredits).toBe(est.json.credits);
+      await h.queue.drain(h.deps);
+    }
+  });
+
+  it("refuses a run when the real quote exceeds the amount the user saw", async () => {
+    const h = await createHarness({ env: { AUTH_MODE: "local_noauth" } });
+    const { call } = client(h);
+    const biz = await call("POST", "/api/businesses", business);
+    const tracker = await call("POST", "/api/trackers", trackerBody(biz.json.id, 5, "standard"));
+    const est = await call("POST", "/api/estimate", { gridSize: 5, queueMode: "standard" });
+    const run = await call("POST", `/api/trackers/${tracker.json.id}/scans`, { maxCostUsd: est.json.chargedUsd / 2 });
+    expect(run.status).toBe(409);
+    expect(run.json.error.code).toBe("COST_CEILING_EXCEEDED");
+  });
+
+  it("hosted: returns credits, and the estimate limit equals the tracker limit", async () => {
+    const h = await createHarness({ env: { AUTH_MODE: "local_noauth", BILLING_MODE: "hosted" } });
+    const { call } = client(h);
+    const est = await call("POST", "/api/estimate", { gridSize: 7, queueMode: "standard" });
+    expect(est.json).toMatchObject({ points: 49, providerCostUsd: 0.0294, credits: 38 });
+    expect((await call("POST", "/api/estimate", { gridSize: GRID_MAX_SIZE, queueMode: "standard" })).status).toBe(200);
+    expect((await call("POST", "/api/estimate", { gridSize: GRID_MAX_SIZE + 1, queueMode: "standard" })).status).toBe(400);
+    expect((await call("POST", "/api/estimate", { gridSize: GRID_MIN_SIZE - 1, queueMode: "standard" })).status).toBe(400);
+  });
+});
 
 describe("local_noauth: the whole flow over HTTP", () => {
   let h: Harness;

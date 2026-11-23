@@ -5,6 +5,7 @@ import type { JWTVerifyGetKey } from "jose";
 import { ZodError, z, type ZodType } from "zod";
 import { alertSettingsSchema } from "@/shared/alerts";
 import { ERROR_STATUS, AppError, type ErrorCode } from "@/shared/errors";
+import { GRID_MAX_SIZE, GRID_MIN_SIZE } from "@/shared/grid";
 import { gbpRefreshSchema, reviewsQuerySchema } from "@/shared/gbp";
 import { asBusinessId, asScanId, asTrackerId } from "@/shared/ids";
 import { brandingSchema, businessInputSchema, businessPatchSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
@@ -342,7 +343,7 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
       path: "/api/estimate",
       access: "session",
       handler: async (c) => {
-        const input = await body(c, z.object({ gridSize: z.number().int().min(3).max(13), queueMode: z.enum(QUEUE_MODES) }));
+        const input = await body(c, z.object({ gridSize: z.number().int().min(GRID_MIN_SIZE).max(GRID_MAX_SIZE), queueMode: z.enum(QUEUE_MODES) }));
         return c.json(quoteScan(c.get("deps").config, input.gridSize, input.queueMode));
       },
     },

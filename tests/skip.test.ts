@@ -1,7 +1,7 @@
 // Skipped grid points: never posted, never charged, never counted. Runs the
 // real scan pipeline on a coastal grid (Rodanthe on the Outer Banks: Atlantic to
 // the east, Pamlico Sound to the west), so the water data is exercised as shipped.
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { at, must } from "@/shared/assert";
 import { buildGrid, formatLocationCoordinate } from "@/shared/grid";

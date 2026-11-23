@@ -14,7 +14,7 @@ export const chargeLabel = (q: Pick<ChargeQuote, "chargedUsd" | "credits">, bill
 
 /** Muted line under the run button: points x queue, what is charged, and the hosted balance when known. */
 export function scanBreakdown(q: ChargeQuote, billingMode: "byok" | "hosted", balance?: number | null, dataMode?: "mock" | "live"): string {
-  const mock = dataMode === "mock" ? " Mock data: nothing is charged." : "";
+  const mock = billingMode === "byok" && dataMode === "mock" ? " Mock data: nothing is charged." : "";
   const base = `${q.points} points (${Math.round(Math.sqrt(q.points))}x${Math.round(Math.sqrt(q.points))}) on the ${q.queueMode} queue`;
   if (billingMode === "hosted") {
     const bal = balance == null ? "" : ` Balance: ${balance.toLocaleString()} credits.`;

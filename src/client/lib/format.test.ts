@@ -22,7 +22,8 @@ describe("scan cost labels", () => {
   });
   it("mock data mode says nothing is charged", () => {
     expect(scanBreakdown(quote, "byok", null, "mock")).toMatch(/ Mock data: nothing is charged\.$/);
-    expect(scanBreakdown(quote, "hosted", 5, "mock")).toMatch(/Balance: 5 credits\. Mock data: nothing is charged\.$/);
+    expect(scanBreakdown(quote, "hosted", 5, "mock")).toMatch(/Balance: 5 credits\.$/);
+    expect(scanBreakdown(quote, "hosted", 5, "mock")).not.toContain("Mock");
     expect(scanBreakdown(quote, "byok", null, "live")).not.toContain("Mock");
   });
 });

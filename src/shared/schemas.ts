@@ -149,14 +149,16 @@ export const serviceAreaInputSchema = z.object({
       z.object({
         name: z.string().trim().min(1).max(120),
         kind: z.enum(SERVICE_AREA_KINDS).default("other"),
-        source: z.enum(["manual", "census_tiger"]).default("manual"),
+        /** Omitted = keep what is stored for this name (or "manual" for a new one). */
+        source: z.enum(["manual", "census_tiger"]).optional(),
+        /** Omitted = keep the stored boundary for this name; null = remove it. */
         polygon: z
           .unknown()
           .nullable()
           .optional()
           .refine((v) => v == null || isValidShape(v), "Boundary must be a GeoJSON Polygon or MultiPolygon with [lng, lat] coordinates")
           .refine((v) => v == null || !isValidShape(v) || vertexCount(v) <= MAX_BOUNDARY_VERTICES, `Boundary has too many vertices (max ${MAX_BOUNDARY_VERTICES}); simplify it first`)
-          .transform((v) => (v == null ? null : (v as GeoShape))),
+          .transform((v) => (v === undefined ? undefined : v === null ? null : (v as GeoShape))),
       }),
     )
     .max(100),

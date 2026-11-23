@@ -2,16 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { del, get, post } from "../lib/api";
-import { Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Table, Td, Th } from "../components/ui";
+import { Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Select, Table, Td, Th } from "../components/ui";
 import { PageHeader } from "./shell";
 
-type Business = { id: string; name: string; placeId: string | null; domain: string | null; address: string | null; category: string | null; lat: number; lng: number };
+type Business = { id: string; name: string; businessType: "storefront" | "service_area"; placeId: string | null; domain: string | null; address: string | null; category: string | null; lat: number; lng: number };
 type Geo = { display_name: string; lat: string; lon: string };
 
 export function Businesses() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["businesses"], queryFn: () => get<Business[]>("/businesses") });
   const [form, setForm] = useState({ name: "", placeId: "", domain: "", category: "", address: "", lat: "", lng: "" });
+  const [businessType, setBusinessType] = useState<"storefront" | "service_area">("storefront");
   const [geo, setGeo] = useState<Geo[]>([]);
   const [geoBusy, setGeoBusy] = useState(false);
   const [advanced, setAdvanced] = useState(false);
@@ -29,6 +30,7 @@ export function Businesses() {
         // Blank = let the server work it out from the place ID or address.
         lat: form.lat.trim() ? Number(form.lat) : null,
         lng: form.lng.trim() ? Number(form.lng) : null,
+        businessType,
       }),
     onSuccess: () => {
       setForm({ name: "", placeId: "", domain: "", category: "", address: "", lat: "", lng: "" });
@@ -64,6 +66,12 @@ export function Businesses() {
           <Field label="Website domain" hint="Used to recognise the business in results if no place ID."><Input value={form.domain} onChange={set("domain")} placeholder="example.com" /></Field>
           <Field label="Google place ID" hint="Starts with ChIJ. Fills in the map location for you. Give this or an address."><Input value={form.placeId} onChange={set("placeId")} /></Field>
           <Field label="Category (optional)"><Input value={form.category} onChange={set("category")} placeholder="Coffee shop" /></Field>
+          <Field label="Business type" hint="Service-area businesses (plumbers, cleaners) can skip grid points outside the areas they serve. Edit later on the business page.">
+            <Select value={businessType} onChange={(e) => setBusinessType(e.target.value as typeof businessType)}>
+              <option value="storefront">Storefront</option>
+              <option value="service_area">Service-area business</option>
+            </Select>
+          </Field>
           <Field className="md:col-span-2" label="Address" hint="Needed only if you have no place ID. The map location is found automatically when you add the business.">
             <div className="flex gap-2">
               <Input value={form.address} onChange={set("address")} placeholder="101 Main St, Raleigh, NC" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); search(); } }} />
@@ -102,11 +110,12 @@ export function Businesses() {
           <EmptyState title="No businesses yet" />
         ) : (
           <Table>
-            <thead><tr><Th>Name</Th><Th>Match on</Th><Th>Location</Th><Th /></tr></thead>
+            <thead><tr><Th>Name</Th><Th>Type</Th><Th>Match on</Th><Th>Location</Th><Th /></tr></thead>
             <tbody>
               {list.data?.map((b) => (
                 <tr key={b.id}>
                   <Td><Link to={`/businesses/${b.id}`} className="font-medium hover:underline">{b.name}</Link><div className="text-xs text-muted-foreground">{b.address}</div></Td>
+                  <Td className="text-xs">{b.businessType === "service_area" ? "Service area" : "Storefront"}</Td>
                   <Td className="text-xs">{b.placeId ? "Place ID" : b.domain ? `Domain: ${b.domain}` : "Name"}</Td>
                   <Td className="text-xs tabular-nums">{b.lat.toFixed(4)}, {b.lng.toFixed(4)}</Td>
                   <Td className="space-x-2 text-right">

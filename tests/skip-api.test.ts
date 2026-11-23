@@ -59,6 +59,12 @@ describe("skip rules over HTTP (local_noauth)", () => {
       expect(put.json.status).toMatchObject({ applied: true, reason: null, withBoundary: 1 });
       expect(put.json.areas[0]).toMatchObject({ hasBoundary: true, source: "census_tiger", boundaryVertices: 5 });
       expect(JSON.stringify(put.json)).not.toContain("coordinates");
+      // an entry that omits its polygon keeps the stored boundary; null removes it
+      const kept = await c.call("PUT", `/api/businesses/${biz.id}/service-area`, { areas: [{ name: "Test Box", kind: "city" }, { name: "Cary", kind: "city" }] });
+      expect(kept.json.areas.map((a: { name: string; hasBoundary: boolean; source: string }) => [a.name, a.hasBoundary, a.source])).toEqual([["Cary", false, "manual"], ["Test Box", true, "census_tiger"]]);
+      expect(kept.json.status).toMatchObject({ applied: false, reason: "missing_boundaries", missing: ["Cary"] });
+      const removed = await c.call("PUT", `/api/businesses/${biz.id}/service-area`, { areas: [{ name: "Test Box", kind: "city", polygon: null }] });
+      expect(removed.json.areas[0]).toMatchObject({ hasBoundary: false });
       // replacing the list replaces everything
       expect((await c.call("PUT", `/api/businesses/${biz.id}/service-area`, { areas: [] })).json.areas).toEqual([]);
     });

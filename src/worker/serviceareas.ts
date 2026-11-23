@@ -65,9 +65,22 @@ export async function replaceServiceAreas(db: Db, workspaceId: WorkspaceId, busi
     if (seen.has(key)) throw new AppError("VALIDATION_ERROR", `"${a.name}" is listed twice`);
     seen.add(key);
   }
-  await db.delete(businessServiceAreas).where(and(eq(businessServiceAreas.businessId, businessId), eq(businessServiceAreas.workspaceId, workspaceId)));
+  const scope = and(eq(businessServiceAreas.businessId, businessId), eq(businessServiceAreas.workspaceId, workspaceId));
+  // The list is edited as one document, but boundaries are never sent back to the client:
+  // an entry that omits its polygon keeps the stored one.
+  const existing = new Map((await db.select().from(businessServiceAreas).where(scope)).map((r) => [`${r.kind}:${r.name.toLowerCase()}`, r]));
+  await db.delete(businessServiceAreas).where(scope);
   for (const a of input.areas) {
-    await db.insert(businessServiceAreas).values({ id: newId(), workspaceId, businessId, name: a.name, kind: a.kind, source: a.source, polygon: a.polygon });
+    const old = existing.get(`${a.kind}:${a.name.toLowerCase()}`);
+    await db.insert(businessServiceAreas).values({
+      id: newId(),
+      workspaceId,
+      businessId,
+      name: a.name,
+      kind: a.kind,
+      source: a.source ?? old?.source ?? "manual",
+      polygon: a.polygon === undefined ? (old?.polygon ?? null) : a.polygon,
+    });
   }
   return getServiceAreas(db, workspaceId, businessId);
 }

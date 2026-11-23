@@ -1,4 +1,8 @@
 import type { CompetitorSummary, ScanMetrics } from "@/shared/metrics";
+import type { ServiceAreaOverview } from "@/worker/serviceareas";
+import type { SkipPreview } from "@/worker/scans/preview";
+import type { SkipReason } from "@/shared/skip/plan";
+export type { ServiceAreaOverview, SkipPreview, SkipReason };
 export type { ScanDetail, ScanListItem, TrackerSummary } from "@/worker/scans/queries";
 export type { CompetitorSummary, ScanMetrics };
 import type { AlertSettingsValues } from "@/shared/alerts";
@@ -23,7 +27,7 @@ export type Me = {
 };
 
 export type PointResults = {
-  point: { id: string; row: number; col: number; lat: number; lng: number; rank: number | null; status: string };
+  point: { id: string; row: number; col: number; lat: number; lng: number; rank: number | null; status: string; skipReason?: SkipReason | null };
   results: Array<{ rank: number; name: string; rating: number | null; ratingCount: number | null; category: string | null; address: string | null; isTarget: boolean }>;
   /** Retention pruned this scan's competitor rows. */
   competitorsExpired?: boolean;
@@ -41,7 +45,9 @@ export type ScanViewData = {
   zoom: number;
   searchType: "maps" | "local_finder";
   business: { name: string; lat: number; lng: number };
-  points: Array<{ id: string; row: number; col: number; lat: number; lng: number; rank: number | null; status?: string }>;
+  points: Array<{ id: string; row: number; col: number; lat: number; lng: number; rank: number | null; status?: string; skipReason?: SkipReason | null }>;
+  /** Grid points skipped (water, outside area, user); `metrics.totalPoints` counts only the scanned ones. */
+  skippedPoints?: number;
   metrics: ScanMetrics | null;
   competitors: CompetitorSummary[];
   /** True once retention pruned the competitor rows (the grid and metrics remain). */

@@ -456,7 +456,7 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
     },
 
     // operations
-    { method: "get", path: "/api/ops/failed-jobs", access: "admin", handler: async (c) => c.json(await listFailedJobs(db(c), ws(c))) },
+    { method: "get", path: "/api/ops/failed-jobs", access: "admin", handler: async (c) => c.json(await listFailedJobs(db(c), ws(c), c.get("deps").now?.())) },
 
     // alerts
     {
@@ -536,7 +536,7 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
       method: "get",
       path: "/api/usage",
       access: "session",
-      handler: async (c) => c.json(await getUsageSummary(db(c), ws(c), c.get("deps").config.billingMode)),
+      handler: async (c) => c.json(await getUsageSummary(db(c), ws(c), c.get("deps").config.billingMode, c.get("deps").now?.())),
     },
   ];
 }

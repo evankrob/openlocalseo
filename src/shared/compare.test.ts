@@ -75,3 +75,18 @@ describe("shapeMismatches", () => {
     expect(shapeMismatches(shape, { ...shape, gridSize: 7, keyword: "x" })).toEqual(["grid size", "keyword"]);
   });
 });
+
+describe("skipped points in compare", () => {
+  it("foundCounts leaves skipped points out (neither counted nor failed)", () => {
+    const counts = foundCounts([
+      { row: 0, col: 0, rank: 2, status: "completed" },
+      { row: 0, col: 1, rank: null, status: "skipped" },
+      { row: 1, col: 0, rank: null, status: "failed" },
+    ]);
+    expect(counts).toEqual({ top3: 1, top10: 1, notFound: 0, total: 1, failed: 1 });
+  });
+  it("a point skipped on one side is not comparable", () => {
+    const [change] = comparePoints([{ row: 0, col: 0, rank: 4, status: "completed" }], [{ row: 0, col: 0, rank: null, status: "skipped" }]);
+    expect(change?.kind).toBe("unknown");
+  });
+});

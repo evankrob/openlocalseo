@@ -64,6 +64,10 @@
   --rank-none: #dc2626; /* not in the top 20, red, white text */
   --rank-text-dark: #0b0b0b;
   --rank-text-light: #ffffff;
+  /* Skipped points (water / outside area / user): grey, never hidden. */
+  --rank-skipped: #d4d4d8;
+  --rank-skipped-text: #3f3f46;
+  --rank-skipped-line: #71717a;
   --series-1: #2a78d6;
   --grid-line: oklch(56% 0.01 255 / 0.28);
 }
@@ -94,6 +98,9 @@
     --rank-none: #dc2626;
     --rank-text-dark: #0b0b0b;
     --rank-text-light: #ffffff;
+    --rank-skipped: #d4d4d8;
+    --rank-skipped-text: #3f3f46;
+    --rank-skipped-line: #71717a;
     --series-1: #3987e5;
   }
 }
@@ -134,8 +141,28 @@ body,
 .point-card-list b { display: inline-block; min-width: 1.4em; }
 .leaflet-tooltip.point-card-tip { white-space: normal; }
 .rank-pin[data-tier="failed"] { background: var(--card); color: var(--destructive); border: 2px dashed var(--destructive); }
+.rank-pin[data-tier="skipped"] { background: var(--rank-skipped); color: var(--rank-skipped-text); border: 2px dashed var(--rank-skipped-line); font-weight: 600; position: relative; }
+.pin-skip-label {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-align: center;
+  font: 600 9px/1.1 system-ui, sans-serif;
+  color: #27272a;
+  background: rgb(255 255 255 / 0.88);
+  border-radius: 4px;
+  padding: 1px 3px;
+  pointer-events: none;
+}
 .rank-pin[data-selected="true"] { outline: 3px solid var(--foreground); outline-offset: 1px; }
 .rank-pin.small { width: 22px; height: 22px; font-size: 10px; }
+/* Grid-planning pins (new grid builder, tracker "Grid points" tab). */
+.plan-pin { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 9999px; border: 2px solid #104281; background: #5598e7; position: relative; cursor: pointer; font: 700 11px/1 system-ui, sans-serif; color: #fff; }
+.plan-pin[data-skip="true"] { background: var(--rank-skipped); border: 2px dashed var(--rank-skipped-line); color: var(--rank-skipped-text); }
+.plan-pin[data-override="include"] { border-style: solid; border-color: #104281; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #5598e7; }
+.plan-pin[data-override="exclude"] { border-color: var(--rank-skipped-line); }
 .legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 9999px; }
 .business-marker { width: 14px; height: 14px; background: var(--card); border: 3px solid var(--foreground); border-radius: 3px; transform: rotate(45deg); }
 

@@ -17,6 +17,7 @@
     "db:seed:local": "tsx scripts/seed.ts && wrangler d1 execute DB --local --file=.wrangler/seed.sql",
     "db:reset:local": "rm -rf .wrangler/state && wrangler d1 migrations apply DB --local && npm run db:seed:local",
     "cf-typegen": "wrangler types src/worker/worker-configuration.d.ts",
+    "build:water": "tsx scripts/build-water.ts",
     "lint": "oxlint",
     "check": "npm run typecheck && npm run lint && npm test"
   },
@@ -52,6 +53,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "drizzle-kit": "^0.31.11",
+    "mapshaper": "^0.8.7",
     "oxlint": "^1.88.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

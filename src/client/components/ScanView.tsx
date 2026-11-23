@@ -4,17 +4,35 @@ import { rankLabel } from "@/shared/rank";
 import { cn } from "../lib/cn";
 import { fmtNum, fmtPct } from "../lib/format";
 import type { CompetitorSummary, PointResults, ScanMetrics, ScanViewData } from "../lib/types";
+import { SKIP_REASON_LABEL } from "@/shared/skip/plan";
+import { SHORE_TOLERANCE_M } from "@/shared/skip/water";
 import { CompetitorOverlay } from "./CompetitorOverlay";
 import { RankLegend, RankMap } from "./RankMap";
 import { Badge, Card, CardHeader, EmptyState, Spinner, Stat, Table, Td, Th } from "./ui";
 
-export function MetricCards({ metrics }: { metrics: ScanMetrics | null }) {
+/** "x of y points scanned": skipped points are left out of every metric, so say how many counted. */
+export function ScannedNote({ scanned, gridPoints, skipped }: { scanned: number; gridPoints: number; skipped: number }) {
+  return (
+    <div className="mt-1 text-xs font-medium text-foreground/80" title={skipped ? `${skipped} skipped point${skipped === 1 ? " is" : "s are"} not counted in any metric` : undefined}>
+      {scanned} of {gridPoints} points scanned
+    </div>
+  );
+}
+
+export function MetricCards({ metrics, gridPoints, skipped = 0 }: { metrics: ScanMetrics | null; gridPoints?: number; skipped?: number }) {
+  const note = metrics && gridPoints ? <ScannedNote scanned={metrics.totalPoints} gridPoints={gridPoints} skipped={skipped} /> : null;
+  const hint = (text: string) => (
+    <>
+      {text}
+      {note}
+    </>
+  );
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <Stat label="ATRP" value={fmtNum(metrics?.atrp)} hint="Average rank, all points (not found = 21). Lower is better." />
-      <Stat label="ARP" value={fmtNum(metrics?.arp)} hint="Average rank where found." />
-      <Stat label="SoLV" value={fmtPct(metrics?.solv)} hint="Share of points ranking top 3." />
-      <Stat label="Found" value={metrics ? `${metrics.foundPoints}/${metrics.totalPoints}` : "-"} hint="Points where the business shows in the top 20." />
+      <Stat label="ATRP" value={fmtNum(metrics?.atrp)} hint={hint("Average rank, scanned points (not found = 21). Lower is better.")} />
+      <Stat label="ARP" value={fmtNum(metrics?.arp)} hint={hint("Average rank where found.")} />
+      <Stat label="SoLV" value={fmtPct(metrics?.solv)} hint={hint("Share of scanned points ranking top 3.")} />
+      <Stat label="Found" value={metrics ? `${metrics.foundPoints}/${metrics.totalPoints}` : "-"} hint={hint("Scanned points where the business shows in the top 20.")} />
     </div>
   );
 }
@@ -26,6 +44,23 @@ export function PointPanel({ loader, pointId, queryKey }: { loader?: (pointId: s
   if (q.isLoading) return <div className="p-6"><Spinner /></div>;
   if (!q.data) return <EmptyState title="Could not load this point" />;
   const { point, results, competitorsExpired } = q.data;
+  if (point.status === "skipped") {
+    const reason = point.skipReason ?? "user";
+    return (
+      <div className="px-4 py-3 text-sm">
+        <div className="font-medium">
+          Point {point.row + 1},{point.col + 1} <span className="text-muted-foreground">({point.lat.toFixed(4)}, {point.lng.toFixed(4)})</span>
+        </div>
+        <Badge tone="neutral" className="mt-2">{SKIP_REASON_LABEL[reason]}</Badge>
+        <p className="mt-2 text-muted-foreground">
+          This point was not searched and not charged, and it is left out of every metric on this scan.
+          {reason === "water" && ` It sits on open water, more than ${SHORE_TOLERANCE_M} m from the nearest shore.`}
+          {reason === "outside_area" && " It is outside the business's service area."}
+          {reason === "user" && " It was switched off for this grid."}
+        </p>
+      </div>
+    );
+  }
   return (
     <div>
       <div className="border-b border-border px-4 py-3 text-sm">
@@ -109,12 +144,12 @@ export function ScanView({
   const sourceLabel = data.searchType === "maps" ? "Google Maps" : "Google Local Finder";
   return (
     <div className="space-y-4">
-      <MetricCards metrics={data.metrics} />
+      <MetricCards metrics={data.metrics} gridPoints={data.gridSize * data.gridSize} skipped={data.skippedPoints} />
       <div className={cn("grid gap-4", loadPoint ? "lg:grid-cols-[1fr_340px]" : "")}>
         <Card className="p-3 print-break">
           <RankMap points={data.points} business={data.business} selectedId={selected} onSelect={setSelected} />
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1">
-            <RankLegend />
+            <RankLegend showSkipped={(data.skippedPoints ?? 0) > 0} />
             <span className="text-xs text-muted-foreground">
               {data.gridSize}x{data.gridSize} grid &middot; {sourceLabel} &middot; zoom {data.zoom}z
             </span>

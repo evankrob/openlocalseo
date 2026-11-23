@@ -8,6 +8,8 @@ import {
   primaryKey,
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+import type { GeoShape } from "@/shared/skip/geo";
+import type { Exclusion, ServiceAreaEntry, SkipOverrides } from "@/shared/skip/plan";
 
 const createdAt = () =>
   text("created_at")
@@ -104,6 +106,9 @@ export const businesses = sqliteTable(
     category: text("category"),
     lat: real("lat").notNull(),
     lng: real("lng").notNull(),
+    // storefront (customers come to you; never skipped for being out of area) or
+    // service_area (a service-area business; see business_service_areas).
+    businessType: text("business_type", { enum: ["storefront", "service_area"] }).notNull().default("storefront"),
     // Opt-in monthly Google Business Profile snapshot (costs money, so off by default).
     gbpTracking: integer("gbp_tracking", { mode: "boolean" }).notNull().default(false),
     gbpNextRunAt: text("gbp_next_run_at"),
@@ -112,6 +117,41 @@ export const businesses = sqliteTable(
   },
   (t) => [index("businesses_workspace_idx").on(t.workspaceId), index("businesses_gbp_next_run_idx").on(t.gbpNextRunAt)],
 );
+
+// Where a service-area business says it works. A row is a name (city, ZIP,
+// county) and, when we have one, its GeoJSON boundary. There is no boundary
+// source in the app yet (SCOPE/README "Skipping grid points"): polygons only
+// arrive from the user, e.g. a US Census TIGER export. Names without a polygon
+// are stored and shown as "not applied: no boundary data".
+export const businessServiceAreas = sqliteTable(
+  "business_service_areas",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ["city", "zip", "county", "other"] }).notNull().default("other"),
+    source: text("source", { enum: ["manual", "gbp", "census_tiger"] }).notNull().default("manual"),
+    // GeoJSON Polygon / MultiPolygon, [lng, lat]; null when only the name is known.
+    polygon: text("polygon", { mode: "json" }).$type<GeoShape>(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("business_service_areas_business_idx").on(t.businessId),
+    uniqueIndex("business_service_areas_name_idx").on(t.businessId, t.kind, t.name),
+  ],
+);
+export type ServiceAreaRow = typeof businessServiceAreas.$inferSelect;
+export const toServiceAreaEntry = (row: Pick<ServiceAreaRow, "name" | "kind" | "source" | "polygon">): ServiceAreaEntry => ({
+  name: row.name,
+  kind: row.kind,
+  source: row.source,
+  polygon: row.polygon,
+});
 
 export const trackers = sqliteTable(
   "trackers",
@@ -136,6 +176,12 @@ export const trackers = sqliteTable(
     device: text("device", { enum: ["desktop", "mobile"] }).notNull().default("mobile"),
     languageCode: text("language_code").notNull().default("en"),
     depth: integer("depth").notNull().default(20),
+    // Skip grid points on open water (farther than the shore tolerance from land).
+    autoSkipWater: integer("auto_skip_water", { mode: "boolean" }).notNull().default(true),
+    // Per-cell "scan this anyway" / "skip this" choices. Apply to future scans only.
+    skipOverrides: text("skip_overrides", { mode: "json" }).$type<SkipOverrides>().notNull().default(sql`'{"include":[],"exclude":[]}'`),
+    // User-drawn exclusion shapes (off by default). Points inside are skipped as "outside area".
+    skipExclusion: text("skip_exclusion", { mode: "json" }).$type<Exclusion>().notNull().default(sql`'{"enabled":false,"shapes":[]}'`),
     scheduleFrequency: text("schedule_frequency", { enum: ["none", "monthly"] }).notNull().default("none"),
     // Day of month (1-28) the scheduled scan runs on.
     scheduleDay: integer("schedule_day").notNull().default(1),
@@ -204,7 +250,11 @@ export const scans = sqliteTable(
     solv: real("solv"),
     foundPoints: integer("found_points"),
     top3Points: integer("top3_points"),
+    // Points that were sent to the provider (and charged). Skipped points are not
+    // counted here, so every metric and alert rule that divides by it uses scanned totals.
     totalPoints: integer("total_points").notNull(),
+    // Grid points skipped when the scan was created (water, outside area, user).
+    skippedPoints: integer("skipped_points").notNull().default(0),
     // Cost tracking. estimated = upper bound at creation; cost = sum of the
     // per-call costs DataForSEO reported (see api_calls).
     estimatedCostUsd: real("estimated_cost_usd").notNull(),
@@ -241,9 +291,11 @@ export const scanPoints = sqliteTable(
     col: integer("col").notNull(),
     lat: real("lat").notNull(),
     lng: real("lng").notNull(),
-    status: text("status", { enum: ["pending", "posted", "completed", "failed"] })
+    // "skipped" points are never sent to the provider or charged; skip_reason says why.
+    status: text("status", { enum: ["pending", "posted", "completed", "failed", "skipped"] })
       .notNull()
       .default("pending"),
+    skipReason: text("skip_reason", { enum: ["water", "outside_area", "user"] }),
     taskId: text("task_id"),
     // Target business rank at this point; null = not found in the tracked depth.
     rank: integer("rank"),

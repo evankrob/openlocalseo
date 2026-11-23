@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { get } from "../lib/api";
 import { fmtDate } from "../lib/format";
-import type { CompetitorSummary, PointResults, ScanMetrics } from "../lib/types";
+import type { CompetitorSummary, PointResults, ScanMetrics, SkipReason } from "../lib/types";
 import { ScanView } from "../components/ScanView";
 import { TrendCharts } from "../components/TrendCharts";
 import { Button, Card, EmptyState, Select, Spinner } from "../components/ui";
@@ -18,7 +18,8 @@ type Report = {
   history: Array<{ id: string; createdAt: string; arp: number | null; atrp: number | null; solv: number | null }>;
   scan: null | {
     id: string; createdAt: string; gridSize: number; radiusKm: number; zoom: number; searchType: "maps" | "local_finder"; keyword: string;
-    points: Array<{ id: string; row: number; col: number; lat: number; lng: number; rank: number | null; status: string }>;
+    points: Array<{ id: string; row: number; col: number; lat: number; lng: number; rank: number | null; status: string; skipReason: SkipReason | null }>;
+    skippedPoints: number;
     metrics: ScanMetrics | null;
     business: { lat: number; lng: number; name: string };
   };

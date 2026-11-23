@@ -26,4 +26,9 @@ describe("scan cost labels", () => {
     expect(scanBreakdown(quote, "hosted", 5, "mock")).not.toContain("Mock");
     expect(scanBreakdown(quote, "byok", null, "live")).not.toContain("Mock");
   });
+  it("skip-aware quote counts only scanned points and names the skipped ones", () => {
+    const skipQuote = { points: 16, gridPoints: 49, skippedPoints: 33, queueMode: "standard", chargedUsd: 0.0096, credits: 10 };
+    expect(scanBreakdown(skipQuote, "byok")).toBe("16 of 49 points (7x7) on the standard queue; 33 skipped and not charged. Upper-bound DataForSEO estimate; the real cost is recorded per call.");
+    expect(scanBreakdown({ ...quote, gridPoints: 49, skippedPoints: 0 }, "byok")).toContain("49 points (7x7)");
+  });
 });

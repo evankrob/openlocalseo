@@ -81,6 +81,15 @@ last point done:  metrics, credit settlement, scan = completed
 | **ATRP** | average rank over all points, not-found counted as 21 |
 | **SoLV** | share of points where the business ranks in the top 3 |
 
+### Skipped grid points
+
+A grid point that cannot hold a customer is skipped: greyed out on the heatmap with a small label (`skipped: water`, `skipped: outside area`, `skipped: user`), never searched, never charged, and left out of ATRP, ARP, SoLV and the top-3 share. Each metric card says "x of y points scanned". A scanned point with no result in the top 20 still counts as 21.
+
+- **Water.** A point is skipped only when it is *on* water (ocean, sounds, bays, lakes, reservoirs) and more than 750 m from the nearest shore (`SHORE_TOLERANCE_M`), so a beach, pier or causeway is always scanned. The data is Natural Earth 10m ocean and lakes (public domain), simplified and bundled into the Worker by `npm run build:water` (about 0.74 MB gzipped as binary, 0.81 MB as the bundled module; lazily imported). Rivers are centre lines in that dataset, so narrow rivers are never skipped. Natural Earth is drawn for 1:10,000,000 maps, which is why the tolerance is generous. Turn it off per tracker with "Skip points on open water".
+- **Outside the service area.** A business is a *storefront* (default: never skipped for being out of area) or a *service-area business*. A service-area business lists the cities, ZIPs or counties it serves; points more than 0.5 mi (805 m) outside them are skipped, but only when every listed area has a boundary. **The app ships no boundaries and Google Business Profile data (as returned by DataForSEO) has none**, so names without a boundary show "Not applied: no boundary data" and skip nothing. You can attach a GeoJSON boundary to each area (for example a US Census TIGER/Line ZCTA, place or county export) on the business page or via `PUT /api/businesses/:id/service-area`.
+- **Your own choices.** Click any point on the new-grid map or the tracker's "Grid points" tab to scan it anyway or skip it. These per-cell overrides, and an optional drawn exclusion circle (off by default), apply to future scans; every scan stores the final status of each point, so history never changes. Changing the grid's size, radius or centre clears the per-cell choices.
+- **Cost.** The quote, credit hold, per-scan ceiling and `quote_scan` MCP tool count only the points that will be scanned (`quote.points`); `POST /api/skip-preview` and `GET /api/trackers/:id/skip-plan` show the plan and quote before anything runs.
+
 ### Cost (DataForSEO list prices per SERP, depth <= 100)
 
 | | Standard | Priority | Live |
@@ -88,6 +97,8 @@ last point done:  metrics, credit settlement, scan = completed
 | price per point | $0.0006 | $0.0012 | $0.002 |
 | 7x7 (49 pts) | $0.0294 | $0.0588 | $0.098 |
 | 13x13 (169 pts) | $0.1014 | $0.2028 | $0.338 |
+
+Prices are per point actually scanned: skipped points (above) are not charged.
 
 These are upper-bound estimates; the real cost of each call is read from DataForSEO's response and stored in `api_calls` (Usage page). Re-check [DataForSEO pricing](https://dataforseo.com/pricing) before budgeting.
 

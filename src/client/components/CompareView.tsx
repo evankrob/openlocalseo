@@ -12,6 +12,7 @@ import { cn } from "../lib/cn";
 import { fmtDateTime, fmtNum, fmtPct } from "../lib/format";
 import type { ScanDetail, ScanListItem } from "../lib/types";
 import { RankLegend, RankMap } from "./RankMap";
+import { ScannedNote } from "./ScanView";
 import { Card, CardHeader, EmptyState, Spinner } from "./ui";
 
 type View = "side" | "change";
@@ -53,6 +54,7 @@ export function CompareView({ scans }: { scans: ScanListItem[] }) {
   const mismatch = a && b ? shapeMismatches({ ...a.scan }, { ...b.scan }) : [];
   const ready = !!a && !!b && !same && mismatch.length === 0;
   const changes = useMemo(() => (ready ? comparePoints(a.points, b.points) : []), [ready, a, b]);
+  const anySkipped = [a, b].some((d) => (d?.scan.skippedPoints ?? 0) > 0);
 
   if (scans.length < 2) return <Card><EmptyState title="Need two completed scans to compare">Run another scan, or wait for the next scheduled one.</EmptyState></Card>;
 
@@ -102,6 +104,7 @@ export function CompareView({ scans }: { scans: ScanListItem[] }) {
                 <Card key={label} className="space-y-2 p-3">
                   <div className="px-1 text-sm"><span className="font-medium">{label}</span> <span className="text-muted-foreground">{fmtDateTime(data.scan.createdAt)}</span></div>
                   <RankMap className="h-[320px] md:h-[380px]" points={data.points} business={data.business} small={data.points.length > 100} />
+                  {data.metrics && data.scan.skippedPoints > 0 && <div className="px-1"><ScannedNote scanned={data.metrics.totalPoints} gridPoints={data.scan.gridSize ** 2} skipped={data.scan.skippedPoints} /></div>}
                 </Card>
               ))}
             </div>
@@ -110,7 +113,8 @@ export function CompareView({ scans }: { scans: ScanListItem[] }) {
               <ChangeGrid changes={changes} gridSize={b.scan.gridSize} />
             </Card>
           )}
-          {view === "side" ? <RankLegend /> : <ChangeLegend />}
+          {view === "side" ? <RankLegend showSkipped={anySkipped} /> : <ChangeLegend />}
+          {anySkipped && <p className="text-xs text-muted-foreground">Skipped points are left out of both scans&rsquo; metrics, so the change compares the points each scan actually searched. A different set of skipped points between two scans means the two averages cover slightly different places.</p>}
         </>
       )}
     </div>
@@ -166,7 +170,7 @@ function Summary({ before, after, changes }: { before: ScanDetail; after: ScanDe
         <span><b className="text-success">{counts.improved}</b> improved{counts.newlyFound > 0 && <span className="text-xs text-muted-foreground"> ({counts.newlyFound} newly found)</span>}</span>
         <span><b className="text-destructive">{counts.declined}</b> declined{counts.lost > 0 && <span className="text-xs text-muted-foreground"> ({counts.lost} lost)</span>}</span>
         <span><b>{counts.unchanged}</b> unchanged</span>
-        {counts.unknown > 0 && <span className="text-muted-foreground"><b>{counts.unknown}</b> not comparable (failed search)</span>}
+        {counts.unknown > 0 && <span className="text-muted-foreground"><b>{counts.unknown}</b> not comparable (failed or skipped)</span>}
       </div>
       {(!before.metrics || !after.metrics) && <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">Metrics are missing for one of these scans; per-point changes below still use the saved grid ranks.</p>}
       {pruned && <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">Competitor detail has expired for one of these scans. Grid ranks and metrics are kept, so this comparison is unaffected.</p>}
@@ -212,7 +216,7 @@ function ChangeGrid({ changes, gridSize }: { changes: PointChange[]; gridSize: n
 
 function ChangeLegend() {
   const items: Array<[PointChange["kind"], string]> = [
-    ["improved", "▲ moved up"], ["declined", "▼ moved down"], ["unchanged", "= same"], ["new", "new: now found"], ["lost", "lost: no longer found"], ["unknown", "- failed search"],
+    ["improved", "▲ moved up"], ["declined", "▼ moved down"], ["unchanged", "= same"], ["new", "new: now found"], ["lost", "lost: no longer found"], ["unknown", "- failed or skipped"],
   ];
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label="Change legend">

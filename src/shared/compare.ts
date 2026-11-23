@@ -30,7 +30,7 @@ export type PointChangeKind =
   | "unchanged" // same rank (including not found in both)
   | "new" // not found before, found now
   | "lost" // found before, not found now
-  | "unknown"; // a point failed or is missing on one side
+  | "unknown"; // a point failed, was skipped or is missing on one side
 
 export type PointChange = {
   row: number;
@@ -103,10 +103,12 @@ export function countChanges(changes: PointChange[]): ChangeCounts {
 
 export type FoundCounts = { top3: number; top10: number; notFound: number; total: number; failed: number };
 
-/** Found-band counts over completed points. Not found = rank 21+ or null; failed points are separate. */
+/** Found-band counts over completed points. Not found = rank 21+ or null; failed points are separate; skipped points are left out. */
 export function foundCounts(points: ComparePoint[]): FoundCounts {
   const counts: FoundCounts = { top3: 0, top10: 0, notFound: 0, total: 0, failed: 0 };
   for (const p of points) {
+    // Skipped points (water / outside area / user) were never searched: not a result and not a failure.
+    if (p.status === "skipped") continue;
     if (usableRank(p) === undefined) {
       counts.failed++;
       continue;
@@ -167,6 +169,6 @@ const rankText = (rank: number | null) => (rank === null ? "not in top 20" : `ra
 
 /** Tooltip text: "rank 7 → rank 4" (or "failed" when a side has no usable result). */
 export function changeTitle(change: PointChange): string {
-  if (change.kind === "unknown") return "Not comparable (a search failed or is missing)";
+  if (change.kind === "unknown") return "Not comparable (a search failed, was skipped or is missing)";
   return `${rankText(change.before)} → ${rankText(change.after)}`;
 }

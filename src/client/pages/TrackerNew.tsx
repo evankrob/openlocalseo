@@ -1,12 +1,14 @@
 // The grid builder: business + keyword, grid size (3x3 to 13x13), radius,
 // fixed zoom, data source and queue, schedule, and a live cost estimate.
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { GRID_DEFAULT_ZOOM, GRID_MAX_SIZE, GRID_MAX_ZOOM, GRID_MIN_SIZE, GRID_MIN_ZOOM, toKm } from "@/shared/grid";
 import { applyMarkupUsd, creditsForProviderUsd, estimateScanCostUsd, type QueueMode } from "@/shared/pricing";
+import { SHORE_TOLERANCE_M } from "@/shared/skip/water";
+import { EMPTY_OVERRIDES, setCellOverride, type SkipOverrides } from "@/shared/skip/plan";
 import { get, post } from "../lib/api";
-import type { Me } from "../lib/types";
+import type { Me, SkipPreview } from "../lib/types";
 import { GridPreview } from "../components/GridPreview";
 import { Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Select } from "../components/ui";
 import { PageHeader } from "./shell";
@@ -36,16 +38,34 @@ export function TrackerNew() {
   const [monthly, setMonthly] = useState(true);
   const [day, setDay] = useState(1);
   const [override, setOverride] = useState<{ lat: number; lng: number } | null>(null);
+  const [skipWater, setSkipWater] = useState(true);
+  const [overrides, setOverrides] = useState<SkipOverrides>(EMPTY_OVERRIDES);
 
   const business = businesses.data?.find((b) => b.id === (businessId || businesses.data?.[0]?.id));
   const center = override ?? (business ? { lat: business.lat, lng: business.lng } : null);
 
+  // Which grid points will be skipped (water, outside the service area) and what the scan costs without them.
+  // Per-point choices are keyed by grid cell, so they reset when the grid itself changes.
+  useEffect(() => setOverrides(EMPTY_OVERRIDES), [business?.id, center?.lat, center?.lng, size, radius, unit]);
+  const radiusOk = radius > 0 && toKm(radius, unit) <= 80;
+  const previewBody = business && center && radiusOk
+    ? { businessId: business.id, centerLat: center.lat, centerLng: center.lng, gridSize: size, radius: { value: radius, unit }, queueMode, autoSkipWater: skipWater, skipOverrides: overrides }
+    : null;
+  const preview = useQuery({
+    queryKey: ["skip-preview", previewBody],
+    queryFn: () => post<SkipPreview>("/skip-preview", previewBody),
+    enabled: !!previewBody,
+    placeholderData: keepPreviousData,
+  });
+  const skipSummary = preview.data?.summary;
+
   const quote = useMemo(() => {
-    const points = size * size;
+    // Only the points that will really be searched are charged.
+    const points = skipSummary?.scannablePoints ?? size * size;
     const raw = estimateScanCostUsd(points, queueMode);
     const hosted = me.config.billingMode === "hosted";
     return { points, raw, charged: hosted ? applyMarkupUsd(raw, me.config.markup) : raw, credits: hosted ? creditsForProviderUsd(raw, me.config.markup) : 0 };
-  }, [size, queueMode, me.config]);
+  }, [size, queueMode, me.config, skipSummary]);
 
   const save = useMutation({
     mutationFn: async (runNow: boolean) => {
@@ -61,6 +81,8 @@ export function TrackerNew() {
         queueMode,
         device,
         schedule: { frequency: monthly ? "monthly" : "none", day },
+        autoSkipWater: skipWater,
+        skipOverrides: overrides,
       });
       if (runNow) await post(`/trackers/${tracker.id}/scans`, { maxCostUsd: quote.charged });
       return tracker.id;
@@ -78,7 +100,7 @@ export function TrackerNew() {
   }
 
   const radiusKm = toKm(radius, unit);
-  const ready = !!business && !!center && keyword.trim().length > 0 && radius > 0 && radiusKm <= 80;
+  const ready = !!business && !!center && keyword.trim().length > 0 && radius > 0 && radiusKm <= 80 && (skipSummary?.scannablePoints ?? 1) > 0;
 
   return (
     <>
@@ -105,6 +127,9 @@ export function TrackerNew() {
               </div>
               {radiusKm > 80 && <p className="text-xs text-destructive">Maximum radius is 80 km (50 mi).</p>}
             </Field>
+            <Field label="Skip water" hint={`Leaves out points that are on open water, more than ${SHORE_TOLERANCE_M} m from any shore. They are shown greyed out, never searched and never charged. Click a point on the map to switch it back on (or off).`}>
+              <label className="flex items-center gap-2 pt-1 text-sm"><input type="checkbox" checked={skipWater} onChange={(e) => setSkipWater(e.target.checked)} /> Skip points on open water</label>
+            </Field>
             <Field label="Map zoom" hint="Fixed for every scan of this grid so results stay comparable over time. Lower zoom = wider viewport per point.">
               <Select value={zoom} onChange={(e) => setZoom(Number(e.target.value))}>
                 {Array.from({ length: GRID_MAX_ZOOM - GRID_MIN_ZOOM + 1 }, (_, i) => GRID_MIN_ZOOM + i).map((z) => <option key={z} value={z}>{z}z{z === GRID_DEFAULT_ZOOM ? " (default)" : ""}</option>)}
@@ -128,6 +153,15 @@ export function TrackerNew() {
 
             <div className="rounded-lg border border-border bg-muted p-3 text-sm" aria-live="polite">
               <div className="flex justify-between"><span>{quote.points} searches &times; {queueMode}</span><strong className="tabular-nums">${quote.charged.toFixed(4)}</strong></div>
+              {skipSummary && (
+                <p className="mt-1 text-xs" data-testid="skip-summary">
+                  <strong>{skipSummary.scannablePoints} of {skipSummary.gridPoints} points will be scanned.</strong>{" "}
+                  {skipSummary.skippedPoints > 0
+                    ? `${skipSummary.skippedPoints} skipped and not charged (${[["water", skipSummary.byReason.water], ["outside area", skipSummary.byReason.outside_area], ["user", skipSummary.byReason.user]].filter(([, n]) => Number(n) > 0).map(([label, n]) => `${n} ${label}`).join(", ")}).`
+                    : "None skipped."}
+                  {skipSummary.scannablePoints === 0 && <span className="text-destructive"> Nothing would be scanned: include some points.</span>}
+                </p>
+              )}
               <p className="mt-1 text-xs text-muted-foreground">
                 {me.config.billingMode === "hosted"
                   ? `${quote.credits} credits (DataForSEO cost $${quote.raw.toFixed(4)} + ${Math.round((me.config.markup - 1) * 100)}%).`
@@ -144,8 +178,15 @@ export function TrackerNew() {
         <Card className="self-start p-3">
           {center ? (
             <>
-              <GridPreview center={center} size={size} radiusKm={Math.min(radiusKm, 80)} onCenterChange={setOverride} />
-              <p className="px-1 pt-2 text-xs text-muted-foreground">Click the map or drag the marker to move the grid center. Each dot is one search, as a customer standing there would see it.</p>
+              <GridPreview
+                center={center}
+                size={size}
+                radiusKm={Math.min(radiusKm, 80)}
+                onCenterChange={setOverride}
+                plan={preview.data?.points}
+                onTogglePoint={(p) => setOverrides((o) => setCellOverride(o, p, p.skip ? "scan" : "skip"))}
+              />
+              <p className="px-1 pt-2 text-xs text-muted-foreground">Click the map or drag the marker to move the grid center. Each blue dot is one search, as a customer standing there would see it. Grey dots are skipped; click any dot to switch it.</p>
             </>
           ) : <EmptyState title="Choose a business" />}
         </Card>

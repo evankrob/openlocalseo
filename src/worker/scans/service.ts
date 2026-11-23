@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { buildGrid, formatLocationCoordinate } from "@/shared/grid";
+import { formatLocationCoordinate } from "@/shared/grid";
 import {
   applyMarkupUsd,
   creditsForProviderUsd,
@@ -10,10 +10,11 @@ import { AppError } from "@/shared/errors";
 import { asScanId, type ScanId, type TrackerId, type WorkspaceId } from "@/shared/ids";
 import type { AppConfig } from "../config";
 import type { Db } from "../db";
-import { scans, trackers } from "../db/schema";
+import { businesses, scans, trackers } from "../db/schema";
 import { withCreditHold } from "../billing/spend";
 import { newId, nowIso } from "../lib";
 import type { ScanQueue } from "./jobs";
+import { planTrackerGrid, rulesOf } from "./skip";
 import { insertPoints } from "./sql";
 
 export type ScanDeps = {
@@ -25,7 +26,15 @@ export type ScanDeps = {
 };
 
 export type ScanQuote = {
+  /**
+   * Points that will actually be sent to the provider (and charged). Skipped
+   * points (water, outside area, user) are not included: any cost estimate
+   * must use this number, never gridSize squared.
+   */
   points: number;
+  /** All points in the grid, scanned or not. */
+  gridPoints: number;
+  skippedPoints: number;
   queueMode: QueueMode;
   /** What DataForSEO will charge (upper bound), in USD. */
   providerCostUsd: number;
@@ -40,11 +49,22 @@ export function quoteScan(
   gridSize: number,
   queueMode: QueueMode,
 ): ScanQuote {
-  const points = gridSize * gridSize;
-  const providerCostUsd = estimateScanCostUsd(points, queueMode);
+  return quoteScanPoints(config, gridSize * gridSize, 0, queueMode);
+}
+
+/** The quote for a grid after skipping: `scannablePoints` are charged, `skippedPoints` are free. */
+export function quoteScanPoints(
+  config: Pick<AppConfig, "billingMode" | "markup">,
+  scannablePoints: number,
+  skippedPoints: number,
+  queueMode: QueueMode,
+): ScanQuote {
+  const providerCostUsd = estimateScanCostUsd(scannablePoints, queueMode);
   const hosted = config.billingMode === "hosted";
   return {
-    points,
+    points: scannablePoints,
+    gridPoints: scannablePoints + skippedPoints,
+    skippedPoints,
     queueMode,
     providerCostUsd,
     chargedUsd: hosted ? applyMarkupUsd(providerCostUsd, config.markup) : providerCostUsd,
@@ -74,20 +94,32 @@ export async function createScan(
     .where(and(eq(trackers.id, trackerId), eq(trackers.workspaceId, workspaceId), isNull(trackers.archivedAt)));
   if (!tracker) throw new AppError("NOT_FOUND", "Tracker not found");
 
-  const quote = quoteScan(config, tracker.gridSize, tracker.queueMode);
+  const [business] = await db
+    .select({ id: businesses.id, businessType: businesses.businessType })
+    .from(businesses)
+    .where(and(eq(businesses.id, tracker.businessId), eq(businesses.workspaceId, workspaceId)));
+  if (!business) throw new AppError("NOT_FOUND", "Business not found");
+
+  // Skipped points are decided here, once, and stored on the scan: history never changes
+  // when a rule or an override changes later, and they are never sent to the provider.
+  const { points: planned, summary } = await planTrackerGrid(
+    db,
+    workspaceId,
+    business,
+    { centerLat: tracker.centerLat, centerLng: tracker.centerLng, size: tracker.gridSize, radiusKm: tracker.radiusKm },
+    rulesOf(tracker),
+  );
+  if (summary.scannablePoints === 0) {
+    throw new AppError("VALIDATION_ERROR", "Every point in this grid would be skipped, so there is nothing to scan. Include some points or change the grid.");
+  }
+
+  const quote = quoteScanPoints(config, summary.scannablePoints, summary.skippedPoints, tracker.queueMode);
   if (options.maxCostUsd !== undefined && quote.chargedUsd > options.maxCostUsd) {
     throw new AppError(
       "COST_CEILING_EXCEEDED",
       `Estimated cost $${quote.chargedUsd} is above the approved maximum of $${options.maxCostUsd}`,
     );
   }
-
-  const points = buildGrid({
-    centerLat: tracker.centerLat,
-    centerLng: tracker.centerLng,
-    size: tracker.gridSize,
-    radiusKm: tracker.radiusKm,
-  });
 
   const scanId = asScanId(newId());
   try {
@@ -108,7 +140,8 @@ export async function createScan(
       device: tracker.device,
       languageCode: tracker.languageCode,
       depth: tracker.depth,
-      totalPoints: points.length,
+      totalPoints: summary.scannablePoints,
+      skippedPoints: summary.skippedPoints,
       estimatedCostUsd: quote.providerCostUsd,
       reservedCredits: quote.credits,
       createdAt: nowIso(deps.now?.()),
@@ -126,7 +159,7 @@ export async function createScan(
     await insertPoints(
       db,
       scanId,
-      points.map((p) => ({ id: newId(), row: p.row, col: p.col, lat: p.lat, lng: p.lng })),
+      planned.map((p) => ({ id: newId(), row: p.row, col: p.col, lat: p.lat, lng: p.lng, skipReason: p.skip })),
     );
     await withCreditHold(
       db,

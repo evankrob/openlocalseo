@@ -9,6 +9,8 @@ import {
   toKm,
 } from "./grid";
 import { QUEUE_MODES } from "./pricing";
+import { isValidShape, polygonsOf, type GeoShape } from "./skip/geo";
+import { BUSINESS_TYPES, SERVICE_AREA_KINDS, exclusionSchema, skipOverridesSchema } from "./skip/plan";
 
 const optionalText = (max: number) =>
   z
@@ -29,10 +31,12 @@ export const businessInputSchema = z.object({
   // Optional: filled from the place ID or by geocoding the address when blank.
   lat: z.number().min(-85).max(85).nullable().optional(),
   lng: z.number().min(-180).max(180).nullable().optional(),
+  /** storefront (default) or service_area; only service-area businesses can be skipped for being out of area. */
+  businessType: z.enum(BUSINESS_TYPES).optional(),
 });
 export type BusinessInput = z.infer<typeof businessInputSchema>;
 
-export const businessPatchSchema = z.object({ gbpTracking: z.boolean().optional() });
+export const businessPatchSchema = z.object({ gbpTracking: z.boolean().optional(), businessType: z.enum(BUSINESS_TYPES).optional() });
 export type BusinessPatch = z.infer<typeof businessPatchSchema>;
 
 const radiusSchema = z.object({
@@ -61,6 +65,10 @@ export const trackerInputSchema = z
         day: z.number().int().min(1).max(28).default(1),
       })
       .default({ frequency: "none", day: 1 }),
+    /** Skip grid points on open water. On by default. */
+    autoSkipWater: z.boolean().optional(),
+    skipOverrides: skipOverridesSchema.optional(),
+    exclusion: exclusionSchema.optional(),
   })
   .refine((v) => toKm(v.radius.value, v.radius.unit) <= GRID_MAX_RADIUS_KM, {
     message: `Radius cannot exceed ${GRID_MAX_RADIUS_KM} km`,
@@ -83,6 +91,10 @@ export const trackerPatchSchema = z.object({
   schedule: z
     .object({ frequency: z.enum(["none", "monthly"]), day: z.number().int().min(1).max(28).default(1) })
     .optional(),
+  autoSkipWater: z.boolean().optional(),
+  /** Replaces the per-cell include/skip lists. Cleared automatically when the grid geometry changes. */
+  skipOverrides: skipOverridesSchema.optional(),
+  exclusion: exclusionSchema.optional(),
 });
 export type TrackerPatch = z.infer<typeof trackerPatchSchema>;
 
@@ -122,6 +134,53 @@ export const shareInputSchema = z.object({
   expiresAt: z.string().datetime().nullable().optional(),
 });
 
+const MAX_BOUNDARY_VERTICES = 20_000;
+const vertexCount = (shape: GeoShape) => polygonsOf(shape).reduce((n, rings) => n + rings.reduce((m, ring) => m + ring.length, 0), 0);
+
+/**
+ * The areas a service-area business works in. A boundary (GeoJSON Polygon or
+ * MultiPolygon, [lng, lat]) is optional: a name alone is stored but never used
+ * to skip anything. Boundaries are user-supplied (e.g. exported from US Census
+ * TIGER); the app ships none. `gbp` as a source is reserved and not accepted.
+ */
+export const serviceAreaInputSchema = z.object({
+  areas: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(120),
+        kind: z.enum(SERVICE_AREA_KINDS).default("other"),
+        /** Omitted = keep what is stored for this name (or "manual" for a new one). */
+        source: z.enum(["manual", "census_tiger"]).optional(),
+        /** Omitted = keep the stored boundary for this name; null = remove it. */
+        polygon: z
+          .unknown()
+          .nullable()
+          .optional()
+          .refine((v) => v == null || isValidShape(v), "Boundary must be a GeoJSON Polygon or MultiPolygon with [lng, lat] coordinates")
+          .refine((v) => v == null || !isValidShape(v) || vertexCount(v) <= MAX_BOUNDARY_VERTICES, `Boundary has too many vertices (max ${MAX_BOUNDARY_VERTICES}); simplify it first`)
+          .transform((v) => (v === undefined ? undefined : v === null ? null : (v as GeoShape)))
+          .optional(),
+      }),
+    )
+    .max(100),
+});
+export type ServiceAreaInput = z.infer<typeof serviceAreaInputSchema>;
+
+/** Body of POST /api/skip-preview: what a not-yet-saved grid would skip, and what it would cost. */
+export const skipPreviewSchema = z
+  .object({
+    businessId: z.string().min(1),
+    centerLat: z.number().min(-85).max(85).optional(),
+    centerLng: z.number().min(-180).max(180).optional(),
+    gridSize: z.number().int().min(GRID_MIN_SIZE).max(GRID_MAX_SIZE),
+    radius: radiusSchema,
+    queueMode: z.enum(QUEUE_MODES).default("standard"),
+    autoSkipWater: z.boolean().default(true),
+    skipOverrides: skipOverridesSchema.optional(),
+    exclusion: exclusionSchema.optional(),
+  })
+  .refine((v) => toKm(v.radius.value, v.radius.unit) <= GRID_MAX_RADIUS_KM, { message: `Radius cannot exceed ${GRID_MAX_RADIUS_KM} km`, path: ["radius"] });
+export type SkipPreviewInput = z.infer<typeof skipPreviewSchema>;
 /** Pin, hide or reset (back to the default list) one competitor of a tracker. */
 export const competitorChoiceSchema = z.object({
   // `p:<place id>` or `c:<cid>`; results without an id cannot be chosen (see src/shared/overlay.ts)

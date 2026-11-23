@@ -3,6 +3,7 @@ import { Link, useOutletContext, useParams } from "react-router-dom";
 import { get } from "../lib/api";
 import type { Me } from "../lib/types";
 import { GbpPanel } from "../components/GbpPanel";
+import { ServiceAreaPanel } from "../components/ServiceAreaPanel";
 import { Button, ErrorNote, Spinner } from "../components/ui";
 import { PageHeader } from "./shell";
 
@@ -22,6 +23,7 @@ export function BusinessDetail() {
         description={[business.category, business.address].filter(Boolean).join(" · ") || undefined}
         actions={<Link to="/businesses"><Button variant="outline" size="sm">All businesses</Button></Link>}
       />
+      <ServiceAreaPanel businessId={business.id} />
       <GbpPanel businessId={business.id} billingMode={me.config.billingMode} />
     </>
   );

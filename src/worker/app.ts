@@ -8,7 +8,7 @@ import { ERROR_STATUS, AppError, type ErrorCode } from "@/shared/errors";
 import { GRID_MAX_SIZE, GRID_MIN_SIZE } from "@/shared/grid";
 import { gbpRefreshSchema, reviewsQuerySchema } from "@/shared/gbp";
 import { asBusinessId, asScanId, asTrackerId } from "@/shared/ids";
-import { brandingSchema, competitorChoiceSchema, businessInputSchema, businessPatchSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
+import { brandingSchema, competitorChoiceSchema, businessInputSchema, businessPatchSchema, serviceAreaInputSchema, shareInputSchema, skipPreviewSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
 import { QUEUE_MODES } from "@/shared/pricing";
 import { SESSION_COOKIE, createSession, createWorkspace, deleteSession, listWorkspaces, logIn, signUp, type AuthContext } from "./auth/accounts";
 import { createApiKey, listApiKeys, revokeApiKey } from "./auth/apikeys";
@@ -17,7 +17,9 @@ import { authenticate, requireRole } from "./auth/middleware";
 import { grantCredits } from "./billing/credits";
 import { getUsageSummary } from "./billing/usage";
 import { archiveBusiness, archiveTracker, createBusiness, resolveBusinessInput,
-  createTracker, getBusiness, getTracker, listBusinesses, updateTracker } from "./catalog";
+  createTracker, getBusiness, getTracker, listBusinesses, setBusinessType, updateTracker } from "./catalog";
+import { getServiceAreas, replaceServiceAreas } from "./serviceareas";
+import { previewGridSkips, previewTrackerSkips } from "./scans/preview";
 import { getGbpOverview, listReviews } from "./gbp/queries";
 import { createGbpSnapshot, quoteGbpSnapshot, setGbpTracking } from "./gbp/service";
 import { loadConfig } from "./config";
@@ -276,8 +278,23 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
         if (patch.gbpTracking !== undefined) {
           business = await setGbpTracking(db(c), ws(c), asBusinessId(business.id), patch.gbpTracking);
         }
+        if (patch.businessType !== undefined) {
+          business = await setBusinessType(db(c), ws(c), asBusinessId(business.id), patch.businessType);
+        }
         return c.json(business);
       },
+    },
+    {
+      method: "get",
+      path: "/api/businesses/:id/service-area",
+      access: "session",
+      handler: async (c) => c.json(await getServiceAreas(db(c), ws(c), asBusinessId(param(c, "id")))),
+    },
+    {
+      method: "put",
+      path: "/api/businesses/:id/service-area",
+      access: "session",
+      handler: async (c) => c.json(await replaceServiceAreas(db(c), ws(c), asBusinessId(param(c, "id")), await body(c, serviceAreaInputSchema))),
     },
     {
       method: "get",
@@ -347,6 +364,19 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
         const input = await body(c, z.object({ gridSize: z.number().int().min(GRID_MIN_SIZE).max(GRID_MAX_SIZE), queueMode: z.enum(QUEUE_MODES) }));
         return c.json(quoteScan(c.get("deps").config, input.gridSize, input.queueMode));
       },
+    },
+    {
+      // What a not-yet-saved grid would skip and cost (read-only, starts nothing, so no scan throttle).
+      method: "post",
+      path: "/api/skip-preview",
+      access: "session",
+      handler: async (c) => c.json(await previewGridSkips(c.get("deps"), ws(c), await body(c, skipPreviewSchema))),
+    },
+    {
+      method: "get",
+      path: "/api/trackers/:id/skip-plan",
+      access: "session",
+      handler: async (c) => c.json(await previewTrackerSkips(c.get("deps"), ws(c), asTrackerId(param(c, "id")))),
     },
     {
       method: "get",

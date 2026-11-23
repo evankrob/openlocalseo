@@ -41,7 +41,7 @@ export function CompetitorOverlay({ scanId, data, canEdit = true }: { scanId: st
     const index = new Map(overlay.pointIds.map((id, i) => [id, i]));
     return data.points.map((p) => {
       const i = index.get(p.id);
-      if (i === undefined) return { id: p.id, lat: p.lat, lng: p.lng, rank: null, status: p.status };
+      if (i === undefined) return { id: p.id, lat: p.lat, lng: p.lng, rank: null, status: p.status, skipReason: p.skipReason };
       const yours = overlay.clientRanks[i] ?? null;
       const theirs = current.ranks[i] ?? null;
       const top = overlay.pointTop[i] ?? [];

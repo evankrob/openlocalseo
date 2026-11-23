@@ -4,6 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef } from "react";
 import { rankLabel, rankTier } from "@/shared/rank";
+import { SKIP_REASON_LABEL, type SkipReason } from "@/shared/skip/plan";
 import { cn } from "../lib/cn";
 
 export type MapPoint = {
@@ -12,6 +13,8 @@ export type MapPoint = {
   lng: number;
   rank: number | null;
   status?: string;
+  /** Why a "skipped" point was not scanned. */
+  skipReason?: SkipReason | null;
   /** Head-to-head view: replaces the rank colour and label with a symbol (client vs competitor). */
   versus?: "win" | "loss" | "tie" | "neither";
   /** Hover / tap card: a heading and optional lines, rendered as escaped text. */
@@ -34,7 +37,16 @@ function cardHtml(card: NonNullable<MapPoint["card"]>) {
 export const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 export const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
+const SKIP_SHORT: Record<SkipReason, string> = { water: "water", outside_area: "outside area", user: "user" };
+
 function pinHtml(point: MapPoint, selected: boolean, small: boolean) {
+  if (point.status === "skipped") {
+    const reason = point.skipReason ?? "user";
+    const text = SKIP_REASON_LABEL[reason];
+    // Skipped points are never hidden: a grey pin, plus a small label unless the grid is dense.
+    const label = small ? "" : `<span class="pin-skip-label">skipped:<br>${SKIP_SHORT[reason]}</span>`;
+    return `<div class="rank-pin${small ? " small" : ""}" data-tier="skipped" data-selected="${selected}" title="${text} (not scanned, not charged)">&ndash;${label}</div>`;
+  }
   if (point.versus) {
     const label = VERSUS_TITLE[point.versus];
     return `<div class="rank-pin${small ? " small" : ""}" data-tier="${VERSUS_TIER[point.versus]}" data-versus="${point.versus}" data-selected="${selected}" role="img" aria-label="${label}" title="${label}">${VERSUS_SYMBOL[point.versus]}</div>`;
@@ -96,10 +108,12 @@ export function RankMap({
     const group = layer.current;
     if (!instance || !group) return;
     group.clearLayers();
-    const size = small ? 22 : 30;
+    // On a narrow map (phones) pins sit too close for text labels: use compact pins, label stays in the tooltip.
+    const compact = !!small || (el.current?.clientWidth ?? 1000) < 520;
+    const size = compact ? 22 : 30;
     for (const point of points) {
       const marker = L.marker([point.lat, point.lng], {
-        icon: L.divIcon({ className: "", html: pinHtml(point, point.id === selectedId, !!small), iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
+        icon: L.divIcon({ className: "", html: pinHtml(point, point.id === selectedId, compact), iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
         keyboard: false,
       });
       if (point.card) {
@@ -158,7 +172,7 @@ export function VersusLegend({ className }: { className?: string }) {
   );
 }
 
-export function RankLegend({ className }: { className?: string }) {
+export function RankLegend({ className, showSkipped }: { className?: string; showSkipped?: boolean }) {
   const tiers: Array<[string, string]> = [
     ["1", "Rank 1-3"],
     ["2", "4-7"],
@@ -174,6 +188,11 @@ export function RankLegend({ className }: { className?: string }) {
           {label}
         </li>
       ))}
+      {showSkipped && (
+        <li className="flex items-center gap-1.5">
+          <span className="legend-swatch" style={{ background: "var(--rank-skipped)", border: "2px dashed var(--rank-skipped-line)" }} /> Skipped (not scanned)
+        </li>
+      )}
       <li className="flex items-center gap-1.5">
         <span className="business-marker !size-2.5 !border-2" /> Your business
       </li>

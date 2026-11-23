@@ -91,3 +91,10 @@ One competitor at a time on the grid, from stored results: default top 5 (top-3 
 5. Playwright smoke tests in CI against `vite dev`; dark-mode pass.
 6. Precompute competitor summaries; add per-point delta shading on the compare view.
 7. Decide on a git identity, remote and first-release process; propose the local-grid module to open-seo as an issue/demo (they are not merging external PRs).
+
+## Skipped grid points (water, outside service area, user)
+
+- **What:** points on open water (Natural Earth 10m, > 750 m from shore), outside a service-area business's boundaries (0.5 mi buffer, only when every listed area has a boundary), inside a user-drawn exclusion circle, or switched off by the user are stored as `skipped`, never sent to the provider, never charged and left out of every metric. Metric cards show "x of y points scanned"; the heatmap, the scan page and the public report show skipped pins greyed out with a label.
+- **Data:** `scripts/build-water.ts` (mapshaper + a cell encoder) writes `src/worker/skip/water-data.ts`: 883,414 bytes of binary (735,924 gzipped), 1,178,040 bytes / 808,100 gzipped as the bundled module, lazily imported (own chunk in the Worker build).
+- **Not built, and why:** no source of city / ZIP / county boundaries exists in the app or in DataForSEO's business data, so the service-area rule has the data model, the apply hook and the UI, but boundaries must be supplied by the user (GeoJSON). Narrow rivers are not skipped (the free dataset only has centre lines). The drawn exclusion in the UI is a circle by centre and radius (the API also takes polygons). There is no CSV/PDF export in the app yet, so there was no export to add a status column to; the scan API, MCP `get_scan` (`skippedGrid`) and the public report carry the per-point status.
+- **Tests:** `src/shared/skip/skip.test.ts` (geometry, water codec, bundled-data cases, planner), `tests/skip.test.ts` (pipeline: never posted, hold/settle, metrics, overrides), `tests/skip-api.test.ts` (routes, service areas, preview, report, MCP, tenant isolation).

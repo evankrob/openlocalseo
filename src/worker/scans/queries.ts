@@ -1,5 +1,6 @@
 // Read models for the UI, the public report and MCP.
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { assignIdentities, type OverlayRow } from "@/shared/overlay";
 import { summarizeCompetitors, type CompetitorSummary, type ScanMetrics } from "@/shared/metrics";
 import { AppError } from "@/shared/errors";
 import { z } from "zod";
@@ -313,27 +314,43 @@ export async function getOtherListings(db: Db, scanId: string, domain: string | 
   if (!domain) return [];
   const want = bareDomain(domain);
   const rows = await db
-    .select({ pointId: scanResults.pointId, key: scanResults.businessKey, name: scanResults.name, placeId: scanResults.placeId, domain: scanResults.domain, rank: scanResults.rank, isTarget: scanResults.isTarget })
+    .select({ id: scanResults.id, pointId: scanResults.pointId, name: scanResults.name, placeId: scanResults.placeId, cid: scanResults.cid, domain: scanResults.domain, rank: scanResults.rank, isTarget: scanResults.isTarget })
     .from(scanResults)
     .where(eq(scanResults.scanId, scanId));
+  const identities = assignIdentities(rows.map(asIdentityRow));
   const byKey = new Map<string, { name: string; placeId: string | null; points: Set<string>; bestRank: number }>();
   for (const r of rows) {
     if (r.isTarget || !r.domain || bareDomain(r.domain) !== want) continue;
-    const e = byKey.get(r.key) ?? { name: r.name, placeId: r.placeId, points: new Set<string>(), bestRank: r.rank };
+    const key = identities.get(r.id) ?? r.id;
+    const e = byKey.get(key) ?? { name: r.name, placeId: r.placeId, points: new Set<string>(), bestRank: r.rank };
     e.points.add(r.pointId);
     e.bestRank = Math.min(e.bestRank, r.rank);
-    byKey.set(r.key, e);
+    byKey.set(key, e);
   }
   return [...byKey.values()].map((e) => ({ name: e.name, placeId: e.placeId, points: e.points.size, bestRank: e.bestRank }));
 }
+
+/** Minimal row for `assignIdentities` (only the id fields matter there). */
+const asIdentityRow = (r: { id: string; pointId: string; name: string; placeId: string | null; cid: string | null; domain?: string | null; rank: number; isTarget: boolean }): OverlayRow => ({
+  ...r,
+  domain: r.domain ?? null,
+  phone: null,
+  rating: null,
+  ratingCount: null,
+  category: null,
+  address: null,
+});
 
 /** Per-business ARP / ATRP / SoLV from the SERPs this scan already collected. */
 export async function getCompetitors(db: Db, scanId: string, completedPointIds: string[]): Promise<CompetitorSummary[]> {
   const rows = await db
     .select({
+      id: scanResults.id,
       pointId: scanResults.pointId,
-      key: scanResults.businessKey,
       name: scanResults.name,
+      placeId: scanResults.placeId,
+      cid: scanResults.cid,
+      isTarget: scanResults.isTarget,
       rank: scanResults.rank,
       rating: scanResults.rating,
       ratingCount: scanResults.ratingCount,
@@ -342,8 +359,10 @@ export async function getCompetitors(db: Db, scanId: string, completedPointIds: 
     })
     .from(scanResults)
     .where(eq(scanResults.scanId, scanId));
-  const byPoint = new Map<string, typeof rows>(completedPointIds.map((id) => [id, []]));
-  for (const row of rows) byPoint.get(row.pointId)?.push(row);
+  // Matched by place id, else cid; a result with neither is never merged by name.
+  const identities = assignIdentities(rows.map(asIdentityRow));
+  const byPoint = new Map<string, Array<(typeof rows)[number] & { key: string }>>(completedPointIds.map((id) => [id, []]));
+  for (const row of rows) byPoint.get(row.pointId)?.push({ ...row, key: identities.get(row.id) ?? row.id });
   return summarizeCompetitors([...byPoint.values()]);
 }
 

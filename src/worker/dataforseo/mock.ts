@@ -258,6 +258,7 @@ function toItem(base: Record<string, unknown>, b: WorldBusiness, rank: number): 
     cid: b.cid,
     category: b.category,
     address: b.address,
+    phone: b.phone,
     latitude: b.lat,
     longitude: b.lng,
     rating: { rating_type: "Max5", value: b.rating, votes_count: b.ratingCount, rating_max: 5 },

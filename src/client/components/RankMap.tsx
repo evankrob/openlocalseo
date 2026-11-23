@@ -15,7 +15,24 @@ export type MapPoint = {
   status?: string;
   /** Why a "skipped" point was not scanned. */
   skipReason?: SkipReason | null;
+  /** Head-to-head view: replaces the rank colour and label with a symbol (client vs competitor). */
+  versus?: "win" | "loss" | "tie" | "neither";
+  /** Hover / tap card: a heading and optional lines, rendered as escaped text. */
+  card?: { title: string; lines: string[]; list?: Array<{ rank: number; name: string; you: boolean }> };
 };
+
+export const VERSUS_SYMBOL = { win: "▲", loss: "▼", tie: "=", neither: "–" } as const;
+const VERSUS_TIER = { win: "win", loss: "loss", tie: "even", neither: "even" } as const;
+const VERSUS_TITLE = { win: "You rank higher", loss: "Competitor ranks higher", tie: "Tie", neither: "Neither in the top 20" } as const;
+
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function cardHtml(card: NonNullable<MapPoint["card"]>) {
+  const list = card.list?.length
+    ? `<ol class="point-card-list">${card.list.map((r) => `<li${r.you ? ' class="you"' : ""}><b>${r.rank}</b> ${escapeHtml(r.name)}${r.you ? " (you)" : ""}</li>`).join("")}</ol>`
+    : "";
+  return `<div class="point-card"><strong>${escapeHtml(card.title)}</strong>${card.lines.map((l) => `<div>${escapeHtml(l)}</div>`).join("")}${list}</div>`;
+}
 
 export const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 export const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -29,6 +46,10 @@ function pinHtml(point: MapPoint, selected: boolean, small: boolean) {
     // Skipped points are never hidden: a grey pin, plus a small label unless the grid is dense.
     const label = small ? "" : `<span class="pin-skip-label">skipped:<br>${SKIP_SHORT[reason]}</span>`;
     return `<div class="rank-pin${small ? " small" : ""}" data-tier="skipped" data-selected="${selected}" title="${text} (not scanned, not charged)">&ndash;${label}</div>`;
+  }
+  if (point.versus) {
+    const label = VERSUS_TITLE[point.versus];
+    return `<div class="rank-pin${small ? " small" : ""}" data-tier="${VERSUS_TIER[point.versus]}" data-versus="${point.versus}" data-selected="${selected}" role="img" aria-label="${label}" title="${label}">${VERSUS_SYMBOL[point.versus]}</div>`;
   }
   const failed = point.status === "failed";
   const tier = failed ? "failed" : rankTier(point.rank);
@@ -56,6 +77,7 @@ export function RankMap({
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const fitted = useRef<string>("");
+  const refit = useRef<() => void>(() => {});
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
@@ -67,7 +89,15 @@ export function RankMap({
     map.current = instance;
     // A fresh map has no view yet (StrictMode remounts reuse this ref).
     fitted.current = "";
+    // The container can settle after the first fit (grids, scrollbars, tabs): re-measure and fit again.
+    const observer = new ResizeObserver(() => {
+      instance.invalidateSize();
+      fitted.current = "";
+      refit.current();
+    });
+    observer.observe(el.current);
     return () => {
+      observer.disconnect();
       instance.remove();
       map.current = null;
     };
@@ -86,6 +116,16 @@ export function RankMap({
         icon: L.divIcon({ className: "", html: pinHtml(point, point.id === selectedId, compact), iconSize: [size, size], iconAnchor: [size / 2, size / 2] }),
         keyboard: false,
       });
+      if (point.card) {
+        // Hover on desktop, tap (click) everywhere: a tooltip plus a popup that replaces it.
+        const html = cardHtml(point.card);
+        marker.bindTooltip(html, { direction: "top", offset: [0, -size / 2], className: "point-card-tip" });
+        marker.bindPopup(html, { className: "point-card-popup", minWidth: 190, maxWidth: 260, autoPanPadding: [16, 16], offset: [0, -size / 2] });
+        marker.on("popupopen", () => marker.closeTooltip());
+        marker.on("tooltipopen", () => {
+          if (marker.isPopupOpen()) marker.closeTooltip();
+        });
+      }
       marker.on("click", () => onSelectRef.current?.(point.id));
       marker.addTo(group);
     }
@@ -97,15 +137,39 @@ export function RankMap({
         zIndexOffset: -1000,
       }).addTo(group);
     }
-    // Fit once per point set, so selecting a pin does not move the map.
+    // Fit once per point set (and again when the container resizes), so selecting a pin does not move the map.
     const key = points.map((p) => p.id).join(",");
-    if (key !== fitted.current && points.length) {
-      fitted.current = key;
-      instance.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng] as [number, number])).pad(0.12));
-    }
+    const fit = () => {
+      if (key !== fitted.current && points.length) {
+        fitted.current = key;
+        instance.fitBounds(L.latLngBounds(points.map((p) => [p.lat, p.lng] as [number, number])).pad(0.12));
+      }
+    };
+    refit.current = fit;
+    fit();
   }, [points, business, selectedId, small]);
 
   return <div ref={el} className={cn("h-[520px] w-full overflow-hidden rounded-xl border border-border", className)} />;
+}
+
+/** Legend for the client-vs-competitor view: colour plus symbol plus words. */
+export function VersusLegend({ className }: { className?: string }) {
+  const items: Array<[keyof typeof VERSUS_SYMBOL, string]> = [
+    ["win", "You rank higher"],
+    ["loss", "Competitor ranks higher"],
+    ["tie", "Tie"],
+    ["neither", "Neither in top 20"],
+  ];
+  return (
+    <ul className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground", className)} aria-label="Head-to-head legend">
+      {items.map(([key, label]) => (
+        <li key={key} className="flex items-center gap-1.5">
+          <span className="rank-pin small !cursor-default" data-tier={VERSUS_TIER[key]} aria-hidden="true">{VERSUS_SYMBOL[key]}</span>
+          {label}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function RankLegend({ className, showSkipped }: { className?: string; showSkipped?: boolean }) {

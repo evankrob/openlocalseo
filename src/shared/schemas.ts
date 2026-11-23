@@ -181,3 +181,11 @@ export const skipPreviewSchema = z
   })
   .refine((v) => toKm(v.radius.value, v.radius.unit) <= GRID_MAX_RADIUS_KM, { message: `Radius cannot exceed ${GRID_MAX_RADIUS_KM} km`, path: ["radius"] });
 export type SkipPreviewInput = z.infer<typeof skipPreviewSchema>;
+/** Pin, hide or reset (back to the default list) one competitor of a tracker. */
+export const competitorChoiceSchema = z.object({
+  // `p:<place id>` or `c:<cid>`; results without an id cannot be chosen (see src/shared/overlay.ts)
+  identity: z.string().trim().min(3).max(200).regex(/^[pc]:/, "Only businesses with a place ID or CID can be pinned or hidden"),
+  name: z.string().trim().min(1).max(200),
+  status: z.enum(["pinned", "hidden", "default"]),
+});
+export type CompetitorChoice = z.infer<typeof competitorChoiceSchema>;

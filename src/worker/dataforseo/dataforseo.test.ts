@@ -85,6 +85,28 @@ describe("HttpDataForSeo against recorded-shape fixtures (no network)", () => {
     expect(outcome).toMatchObject({ status: "completed" });
   });
 
+  it("parses the phone of Maps and Local Finder items, null when absent", async () => {
+    const { client } = httpWith(json(readyFixture), json(finderFixture));
+    const maps = await client.getTask("maps", "t1");
+    const finder = await client.getTask("local_finder", "t2");
+    for (const outcome of [maps, finder]) {
+      expect(outcome.status).toBe("completed");
+      if (outcome.status !== "completed") continue;
+      expect(outcome.items[0]?.phone).toBe("+19195550100");
+    }
+    // an item with no phone (or a blank one) parses to null rather than failing
+    const without = structuredClone(readyFixture);
+    const items = (without.tasks[0]!.result![0] as { items: Array<Record<string, unknown>> }).items;
+    const business = items.find((i) => i.type === "maps_search")!;
+    delete business.phone;
+    const blank = items.filter((i) => i.type === "maps_search")[1]!;
+    blank.phone = "  ";
+    const parsed = await httpWith(json(without)).client.getTask("maps", "t3");
+    if (parsed.status !== "completed") throw new Error("expected a completed task");
+    expect(parsed.items[0]?.phone).toBeNull();
+    expect(parsed.items[1]?.phone).toBeNull();
+  });
+
   it("maps pending / no-results / failed task statuses", async () => {
     const { client } = httpWith(json(pendingFixture), json(noResultsFixture), json(failedFixture));
     expect(await client.getTask("maps", "a")).toEqual({ status: "pending" });

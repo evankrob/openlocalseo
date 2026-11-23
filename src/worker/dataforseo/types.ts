@@ -15,6 +15,8 @@ export type MapResult = {
   ratingCount: number | null;
   category: string | null;
   address: string | null;
+  /** As listed by Google (free-form); null when the item has none. */
+  phone: string | null;
 };
 
 /** Cost DataForSEO reported for a call: the envelope's `path` and `cost`. */

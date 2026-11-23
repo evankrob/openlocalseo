@@ -63,12 +63,13 @@ test("creates a tracker and runs a scan to completion", async () => {
 
 test("renders the heatmap grid and metrics", async () => {
   await expect(page.getByRole("tab", { name: "Latest scan" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator(".rank-pin")).toHaveCount(9);
+  // The first map is the client's heatmap; the competitor overlay renders its own map below it.
+  await expect(page.locator(".leaflet-container").first().locator(".rank-pin")).toHaveCount(9);
   for (const label of ["ATRP", "ARP", "SoLV", "Found"]) {
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
   await expect(page.getByText(/^\d+\/9$/).first()).toBeVisible();
-  await expect(page.getByLabel("Rank colour legend")).toBeVisible();
+  await expect(page.getByLabel("Rank colour legend").first()).toBeVisible();
 });
 
 test("opens the Alerts page", async () => {

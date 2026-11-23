@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { queryRows } from "@/worker/db/raw";
 import { must } from "@/shared/assert";
-import { asBusinessId, asTrackerId } from "@/shared/ids";
+import { asBusinessId, asScanId, asTrackerId } from "@/shared/ids";
 import { createTestDb } from "../tests/helpers/db";
 import { FakeQueue, MemoryRaw } from "../tests/helpers/harness";
 import { loadConfig } from "@/worker/config";
@@ -17,15 +17,16 @@ import { ensureSharedWorkspaceMember } from "@/worker/auth/accounts";
 import { MockDataForSeo } from "@/worker/dataforseo/mock";
 import type { DataForSeoProvider, ProviderScope } from "@/worker/dataforseo/types";
 import { createScan } from "@/worker/scans/service";
+import { getScanOverlay, setCompetitorChoice } from "@/worker/scans/overlay";
 import { saveBranding, createShare } from "@/worker/reports";
-import { reportShares, trackers } from "@/worker/db/schema";
+import { reportShares, scans, trackers } from "@/worker/db/schema";
 import { sha256Hex } from "@/worker/lib";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { ProcessDeps } from "@/worker/scans/process";
 
 export const DEMO_SHARE_TOKEN = "olrep_demo_maple_ember_fictional";
 
-const TABLES = ["users", "workspaces", "memberships", "businesses", "business_service_areas", "trackers", "scans", "scan_points", "scan_results", "api_calls", "workspace_branding", "report_shares"];
+const TABLES = ["users", "workspaces", "memberships", "businesses", "business_service_areas", "trackers", "scans", "scan_points", "scan_results", "tracker_competitors", "api_calls", "workspace_branding", "report_shares"];
 
 function literal(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
@@ -82,6 +83,15 @@ async function main() {
       await queue.drain(deps);
     }
     await db.update(trackers).set({ nextRunAt: "2026-11-01T00:00:00.000Z" }).where(eq(trackers.id, tracker.id));
+
+    // Overlay demo: pin the mock market's duplicate-listing pair so the "possible duplicate" flag shows.
+    const [latestScan] = await db.select({ id: scans.id }).from(scans).where(eq(scans.trackerId, tracker.id)).orderBy(desc(scans.createdAt)).limit(1);
+    const overlay = await getScanOverlay(db, ws, asScanId(must(latestScan, "seeded scan").id));
+    const twin = overlay.candidates.find((c) => c.name.endsWith(" LLC"));
+    const original = twin && overlay.candidates.find((c) => c.name === twin.name.replace(/ LLC$/, ""));
+    for (const c of [twin, original]) {
+      if (c) await setCompetitorChoice(db, ws, asTrackerId(tracker.id), { identity: c.identity, name: c.name, status: "pinned" });
+    }
   }
 
   // ---- coastal demo: water points are skipped, near-shore points are not -------------------

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5a430f52-b88e-4ebe-9771-7c62286c1954",
+  "id": "fb806cc0-9a21-434b-88c2-3df75d9e73e9",
   "prevId": "c4f66daf-54de-4d81-8148-cb08ec1e01ad",
   "tables": {
     "alert_settings": {
@@ -532,119 +532,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "business_service_areas": {
-      "name": "business_service_areas",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'other'"
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'manual'"
-        },
-        "polygon": {
-          "name": "polygon",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
-        }
-      },
-      "indexes": {
-        "business_service_areas_business_idx": {
-          "name": "business_service_areas_business_idx",
-          "columns": [
-            "business_id"
-          ],
-          "isUnique": false
-        },
-        "business_service_areas_name_idx": {
-          "name": "business_service_areas_name_idx",
-          "columns": [
-            "business_id",
-            "kind",
-            "name"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "business_service_areas_workspace_id_workspaces_id_fk": {
-          "name": "business_service_areas_workspace_id_workspaces_id_fk",
-          "tableFrom": "business_service_areas",
-          "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "business_service_areas_business_id_businesses_id_fk": {
-          "name": "business_service_areas_business_id_businesses_id_fk",
-          "tableFrom": "business_service_areas",
-          "tableTo": "businesses",
-          "columnsFrom": [
-            "business_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "businesses": {
       "name": "businesses",
       "columns": {
@@ -717,14 +604,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "business_type": {
-          "name": "business_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'storefront'"
         },
         "gbp_tracking": {
           "name": "gbp_tracking",
@@ -1574,13 +1453,6 @@
           "autoincrement": false,
           "default": "'pending'"
         },
-        "skip_reason": {
-          "name": "skip_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "task_id": {
           "name": "task_id",
           "type": "text",
@@ -1722,6 +1594,13 @@
         },
         "address": {
           "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phone": {
+          "name": "phone",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1941,14 +1820,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "skipped_points": {
-          "name": "skipped_points",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
         "estimated_cost_usd": {
           "name": "estimated_cost_usd",
           "type": "real",
@@ -2136,6 +2007,102 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "tracker_competitors": {
+      "name": "tracker_competitors",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tracker_id": {
+          "name": "tracker_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "identity": {
+          "name": "identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
+        }
+      },
+      "indexes": {
+        "tracker_competitors_identity_idx": {
+          "name": "tracker_competitors_identity_idx",
+          "columns": [
+            "tracker_id",
+            "identity"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "tracker_competitors_workspace_id_workspaces_id_fk": {
+          "name": "tracker_competitors_workspace_id_workspaces_id_fk",
+          "tableFrom": "tracker_competitors",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "tracker_competitors_tracker_id_trackers_id_fk": {
+          "name": "tracker_competitors_tracker_id_trackers_id_fk",
+          "tableFrom": "tracker_competitors",
+          "tableTo": "trackers",
+          "columnsFrom": [
+            "tracker_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "trackers": {
       "name": "trackers",
       "columns": {
@@ -2249,30 +2216,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": 20
-        },
-        "auto_skip_water": {
-          "name": "auto_skip_water",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "skip_overrides": {
-          "name": "skip_overrides",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{\"include\":[],\"exclude\":[]}'"
-        },
-        "skip_exclusion": {
-          "name": "skip_exclusion",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{\"enabled\":false,\"shapes\":[]}'"
         },
         "schedule_frequency": {
           "name": "schedule_frequency",

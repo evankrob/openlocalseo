@@ -7,7 +7,7 @@ An open-source **local SEO map-grid rank tracker**: see where a business shows u
 - **Grid builder**: business + keyword, 3x3 to 13x13 grid, radius in miles or km, fixed zoom, live cost estimate.
 - **Scans** through DataForSEO's Google Maps and Local Finder endpoints. The Standard queue is the default (cheapest); Priority and Live are options.
 - **Heatmap** on OpenStreetMap + Leaflet (no Google Maps API). Click any pin to see who ranks there.
-- **Metrics**: ARP, ATRP, SoLV. **Competitor view** scored from the same SERPs, at no extra cost.
+- **Metrics**: ARP, ATRP, SoLV. **Competitor view** scored from the same SERPs, at no extra cost. **Competitor overlay**: pick one competitor (default top 5 by top-3 appearances, pin up to 10 more, hide any), see their rank heatmap on the same scale, or a green/red/grey client-vs-competitor view with head-to-head W/L; hover or tap a point for the top businesses there.
 - **History**: scan list, ATRP/SoLV trend charts, side-by-side comparison of two scans.
 - **Monthly scheduled scans** via Cron.
 - **White-label client reports**: revocable public links with your logo, colour and footer; print to PDF.
@@ -166,6 +166,16 @@ claude mcp add --transport http openlocalseo http://localhost:5173/mcp \
 | `list_alerts` | rank-drop, rating-drop and negative-review alerts with before/after metrics, unread first |
 | `get_gbp_profile` | latest Google Business Profile snapshot of a business (rating, reviews, velocity, unanswered, health) and its history; read-only |
 | `list_reviews` | stored Google reviews of a business, newest first, optionally unanswered only; read-only |
+
+## Competitor overlay
+
+On a scan (app only, not yet the public report) the **Competitor overlay** card maps one competitor at a time from the stored per-point results, so nothing is rescanned and nothing is billed.
+
+- **Which competitors:** the top 5 other businesses by how many points they rank top 3 (ties by average rank, not found = 21). Pin up to 10 more and hide any; the choices are saved per tracker and apply to every scan of it. Your own listing, listings that look like it (same phone and a near-identical name) and listings with your website are left out.
+- **Matching:** by Google place ID, else CID. Results with neither are never merged by name (each stays a one-point result and cannot be pinned). Two different listings with a near-identical name **and** the same phone are flagged "possible duplicate", never merged. Phone numbers come from the Maps / Local Finder items and are stored on `scan_results`; scans made before this feature have none, so they show no duplicate flags.
+- **Views:** competitor rank (same colours as your heatmap) or you vs competitor (green ▲ you rank higher, red ▼ they do, grey = tie, – neither in the top 20). Hover or tap a point for the top 5 there.
+- **Metrics:** ATRP, SoLV (the top-3 share), points found, ARP and your head-to-head wins/losses/ties.
+- **Kept data:** `scan_results` keeps every business at every point (rank, place ID, CID, name, rating, category, address, phone) for 400 days (`RETENTION_SCAN_RESULTS_DAYS`), then the overlay shows "expired"; the grid and your metrics stay forever. MCP `get_scan` returns the same metrics as `overlay`.
 
 ## Alerts
 

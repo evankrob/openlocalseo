@@ -156,6 +156,8 @@ const CROSS_WORKSPACE: Record<string, (f: Fixtures) => { method: string; path: s
   "PATCH /api/trackers/:id": (f) => ({ method: "PATCH", path: `/api/trackers/${f.trackerId}`, body: { keyword: "hijacked" } }),
   "DELETE /api/trackers/:id": (f) => ({ method: "DELETE", path: `/api/trackers/${f.trackerId}` }),
   "GET /api/trackers/:id/skip-plan": (f) => ({ method: "GET", path: `/api/trackers/${f.trackerId}/skip-plan` }),
+  "GET /api/trackers/:id/competitors": (f) => ({ method: "GET", path: `/api/trackers/${f.trackerId}/competitors` }),
+  "PUT /api/trackers/:id/competitors": (f) => ({ method: "PUT", path: `/api/trackers/${f.trackerId}/competitors`, body: { identity: "p:ChIJleak", name: "Leak", status: "pinned" } }),
   "GET /api/trackers/:id/scans": (f) => ({ method: "GET", path: `/api/trackers/${f.trackerId}/scans` }),
   "POST /api/trackers/:id/scans": (f) => ({ method: "POST", path: `/api/trackers/${f.trackerId}/scans`, body: {} }),
   "GET /api/trackers/:id/shares": (f) => ({ method: "GET", path: `/api/trackers/${f.trackerId}/shares` }),
@@ -163,6 +165,7 @@ const CROSS_WORKSPACE: Record<string, (f: Fixtures) => { method: string; path: s
   "DELETE /api/shares/:id": (f) => ({ method: "DELETE", path: `/api/shares/${f.shareId}` }),
   "GET /api/scans/:id": (f) => ({ method: "GET", path: `/api/scans/${f.scanId}` }),
   "POST /api/scans/:id/retry": (f) => ({ method: "POST", path: `/api/scans/${f.scanId}/retry`, body: {} }),
+  "GET /api/scans/:id/overlay": (f) => ({ method: "GET", path: `/api/scans/${f.scanId}/overlay` }),
   "GET /api/scans/:id/points/:pointId": (f) => ({ method: "GET", path: `/api/scans/${f.scanId}/points/${f.pointId}` }),
   "POST /api/alerts/:id/read": (f) => ({ method: "POST", path: `/api/alerts/${f.alertId}/read`, body: {} }),
   "DELETE /api/api-keys/:id": (f) => ({ method: "DELETE", path: `/api/api-keys/${f.apiKeyId}` }),
@@ -230,6 +233,7 @@ describe("tenant isolation", () => {
     expect((await a.call("GET", `/api/businesses/${fixtures.businessId}/gbp`)).status).toBe(200);
     expect((await a.call("GET", `/api/trackers/${fixtures.trackerId}`)).json.keyword).toBe("coffee shop");
     expect((await a.call("GET", `/api/trackers/${fixtures.trackerId}/scans`)).json).toHaveLength(1);
+    expect((await a.call("GET", `/api/trackers/${fixtures.trackerId}/competitors`)).json).toMatchObject({ pinned: [], hidden: [] });
     expect((await a.call("GET", `/api/trackers/${fixtures.trackerId}/shares`)).json).toHaveLength(1);
     expect((await a.call("GET", "/api/api-keys")).json).toHaveLength(1);
     const [alert] = await h.db.select().from(alerts).where(eq(alerts.id, "alert-a"));

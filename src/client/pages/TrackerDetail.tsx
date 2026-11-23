@@ -1,16 +1,15 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
-import { diffMetrics } from "@/shared/metrics";
 import { EMPTY_OVERRIDES, NO_EXCLUSION, SERVICE_AREA_BUFFER_M, setCellOverride, type Exclusion, type SkipOverrides } from "@/shared/skip/plan";
 import { SHORE_TOLERANCE_M } from "@/shared/skip/water";
 import { del, get, patch, post } from "../lib/api";
 import { cn } from "../lib/cn";
 import { chargeLabel, fmtDateTime, fmtNum, fmtPct, fmtUsd, scanBreakdown } from "../lib/format";
 import type { Me, PointResults, ScanDetail, ScanListItem, ScanQuote, ScanViewData, ServiceAreaOverview, SkipPreview, TrackerSummary } from "../lib/types";
+import { CompareView } from "../components/CompareView";
 import { GridPreview } from "../components/GridPreview";
-import { RankLegend, RankMap } from "../components/RankMap";
-import { ScanView, OtherListingsNote, ScannedNote } from "../components/ScanView";
+import { ScanView, OtherListingsNote } from "../components/ScanView";
 import { TrendCharts } from "../components/TrendCharts";
 import { Badge, Button, Card, CardHeader, EmptyState, ErrorNote, Field, Input, Select, Spinner, Table, Td, Th } from "../components/ui";
 import { statusTone } from "./Dashboard";
@@ -144,7 +143,7 @@ export function TrackerDetail() {
 
       {tab === "latest" && (latest ? <LatestScan scanId={latest.id} /> : <Card><EmptyState title="No completed scan yet">Run a scan to see the heatmap.</EmptyState></Card>)}
       {tab === "history" && <History trackerId={id} scans={scans.data ?? []} />}
-      {tab === "compare" && <Compare scans={completed} />}
+      {tab === "compare" && <CompareView scans={completed} />}
       {tab === "points" && <GridPoints tracker={t} onSaved={refresh} />}
       {tab === "share" && <Share trackerId={id} admin={me.workspace.role !== "member"} />}
       {tab === "settings" && <Schedule tracker={t} onSaved={refresh} onArchived={() => nav("/")} hosted={hosted} admin={me.workspace.role !== "member"} />}
@@ -159,7 +158,7 @@ function LatestScan({ scanId }: { scanId: string }) {
     <>
       <p className="text-sm text-muted-foreground">Scanned {fmtDateTime(q.data.scan.createdAt)} &middot; <Link className="underline" to={`/scans/${scanId}`}>open scan</Link></p>
       <OtherListingsNote listings={q.data.otherListings} />
-      <ScanView data={toViewData(q.data)} loadPoint={loadScanPoint(scanId)} queryKey={["scan", scanId]} />
+      <ScanView showOverlay data={toViewData(q.data)} loadPoint={loadScanPoint(scanId)} queryKey={["scan", scanId]} />
     </>
   );
 }
@@ -191,48 +190,6 @@ function History({ trackerId, scans }: { trackerId: string; scans: ScanListItem[
         )}
       </Card>
       <span hidden>{trackerId}</span>
-    </div>
-  );
-}
-
-function Compare({ scans }: { scans: ScanListItem[] }) {
-  const [a, setA] = useState(scans[1]?.id ?? scans[0]?.id ?? "");
-  const [b, setB] = useState(scans[0]?.id ?? "");
-  const qa = useQuery({ queryKey: ["scan", a], queryFn: () => get<ScanDetail>(`/scans/${a}`), enabled: !!a });
-  const qb = useQuery({ queryKey: ["scan", b], queryFn: () => get<ScanDetail>(`/scans/${b}`), enabled: !!b });
-  if (scans.length < 2) return <Card><EmptyState title="Need two completed scans to compare">Run another scan, or wait for the next scheduled one.</EmptyState></Card>;
-  const diff = qa.data?.metrics && qb.data?.metrics ? diffMetrics(qb.data.metrics, qa.data.metrics) : null;
-  const sign = (n: number | null, goodWhenNegative: boolean) =>
-    n === null ? "-" : <span className={cn("font-semibold", n === 0 ? "" : (n < 0) === goodWhenNegative ? "text-success" : "text-destructive")}>{n > 0 ? "+" : ""}{n.toFixed(2)}</span>;
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2">
-        {([["Before", a, setA, qa.data], ["After", b, setB, qb.data]] as const).map(([label, value, setter, data]) => (
-          <Card key={label} className="space-y-3 p-3">
-            <div className="flex items-center gap-3 px-1">
-              <span className="text-sm font-medium">{label}</span>
-              <Select value={value} onChange={(e) => setter(e.target.value)}>{scans.map((s) => <option key={s.id} value={s.id}>{fmtDateTime(s.createdAt)}</option>)}</Select>
-            </div>
-            {data ? <RankMap className="h-[380px]" points={data.points} business={data.business} small={data.points.length > 100} /> : <Spinner />}
-            {data?.metrics && (
-              <div className="px-1 text-sm tabular-nums">
-                ATRP {fmtNum(data.metrics.atrp)} &middot; ARP {fmtNum(data.metrics.arp)} &middot; SoLV {fmtPct(data.metrics.solv)}
-                <ScannedNote scanned={data.metrics.totalPoints} gridPoints={data.scan.gridSize ** 2} skipped={data.scan.skippedPoints} />
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
-      {diff && (
-        <Card className="flex flex-wrap items-center gap-x-8 gap-y-2 px-5 py-4 text-sm">
-          <span className="font-medium">Change</span>
-          <span>ATRP {sign(diff.atrp, true)} <span className="text-xs text-muted-foreground">(lower is better)</span></span>
-          <span>ARP {sign(diff.arp, true)}</span>
-          <span>SoLV {sign(diff.solv, false)}<span className="text-xs text-muted-foreground"> pts</span></span>
-        </Card>
-      )}
-      <RankLegend showSkipped />
-      <p className="text-xs text-muted-foreground">Skipped points are left out of both scans&rsquo; metrics, so the change compares the points each scan actually searched. A different set of skipped points between two scans means the two averages cover slightly different places.</p>
     </div>
   );
 }

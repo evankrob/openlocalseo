@@ -49,6 +49,10 @@ Demo client report: `http://localhost:5173/r/olrep_demo_maple_ember_fictional`. 
 - The **live client has never been run against the real API.** Its request shapes follow open-seo's working client and the endpoints in SCOPE.md, but treat the first real scan (3x3) as a verification step.
 - Not mocked but worth knowing: the map uses real OpenStreetMap tiles, and the business form's address search calls OSM's Nominatim from the browser. Both only happen at runtime in the browser. Neither is a paid API, and none of the tests or the build touch them.
 
+## Competitor overlay (build #1 after the hardening pass)
+
+One competitor at a time on the grid, from stored results: default top 5 (top-3 appearances, ties by average rank), up to 10 pins, hide, per-tracker persistence (`tracker_competitors`); rank heatmap on the client's scale plus a green/red/grey client-vs-competitor view with symbols; hover/tap card with the top 5 per point; per-competitor ATRP, SoLV, found, ARP, head-to-head. Matching is by place id, else cid, never by name (this changed `businessKey`; name-only results are keyed per row). `phone` is parsed from Maps/Local Finder items, stored on `scan_results` (migration 0005) and drives a "possible duplicate" flag. The mock market has a near-duplicate pair. Not done: overlay in the public report. See `overlay/PR-BODY.md` for the product calls awaiting sign-off.
+
 ## Deviations from the brief (and why)
 
 - **Not a literal fork.** open-seo is ~1,900 files tightly coupled to Autumn billing, Better Auth, TanStack Start and its agent/audit workers, so I wrote a lean app and ported the relevant pieces and patterns. Stack differs: **Vite SPA + Hono Worker** instead of TanStack Start, hand-written shadcn-style primitives instead of Base UI.

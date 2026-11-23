@@ -23,6 +23,7 @@ const itemSchema = z
     cid: z.string().nullable().optional(),
     category: z.string().nullable().optional(),
     address: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
     rating: ratingSchema,
   })
   .passthrough();
@@ -50,6 +51,7 @@ export function parseMapItems(items: unknown): MapResult[] {
       ratingCount: item.rating?.votes_count ?? null,
       category: item.category ?? null,
       address: item.address ?? null,
+      phone: item.phone?.trim() || null,
     });
   }
   return results.sort((a, b) => a.rank - b.rank);

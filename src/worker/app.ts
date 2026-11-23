@@ -8,7 +8,7 @@ import { ERROR_STATUS, AppError, type ErrorCode } from "@/shared/errors";
 import { GRID_MAX_SIZE, GRID_MIN_SIZE } from "@/shared/grid";
 import { gbpRefreshSchema, reviewsQuerySchema } from "@/shared/gbp";
 import { asBusinessId, asScanId, asTrackerId } from "@/shared/ids";
-import { brandingSchema, businessInputSchema, businessPatchSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
+import { brandingSchema, competitorChoiceSchema, businessInputSchema, businessPatchSchema, shareInputSchema, trackerInputSchema, trackerPatchSchema } from "@/shared/schemas";
 import { QUEUE_MODES } from "@/shared/pricing";
 import { SESSION_COOKIE, createSession, createWorkspace, deleteSession, listWorkspaces, logIn, signUp, type AuthContext } from "./auth/accounts";
 import { createApiKey, listApiKeys, revokeApiKey } from "./auth/apikeys";
@@ -32,6 +32,7 @@ import { createShare, getBranding, getPublicPointResults, getPublicReport, listS
 import { orderRoutes, type RouteDef } from "./routes";
 import type { ProcessDeps } from "./scans/process";
 import { getPointResults, getScanDetail, listTrackerScans, listTrackerSummaries, listWorkspaceScans } from "./scans/queries";
+import { getCompetitorSettings, getScanOverlay, setCompetitorChoice } from "./scans/overlay";
 import { createScan, quoteScan } from "./scans/service";
 
 type Variables = { deps: ProcessDeps; auth: AuthContext };
@@ -396,6 +397,18 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
     },
     {
       method: "get",
+      path: "/api/trackers/:id/competitors",
+      access: "session",
+      handler: async (c) => c.json(await getCompetitorSettings(db(c), ws(c), asTrackerId(param(c, "id")))),
+    },
+    {
+      method: "put",
+      path: "/api/trackers/:id/competitors",
+      access: "session",
+      handler: async (c) => c.json(await setCompetitorChoice(db(c), ws(c), asTrackerId(param(c, "id")), await body(c, competitorChoiceSchema))),
+    },
+    {
+      method: "get",
       path: "/api/trackers/:id/shares",
       access: "admin",
       handler: async (c) => c.json(await listShares(db(c), ws(c), asTrackerId(param(c, "id")))),
@@ -453,6 +466,13 @@ export function apiRoutes(): RouteDef<AppEnv>[] {
       path: "/api/scans/:id/points/:pointId",
       access: "session",
       handler: async (c) => c.json(await getPointResults(db(c), asScanId(param(c, "id")), param(c, "pointId"), { workspaceId: ws(c) })),
+    },
+
+    {
+      method: "get",
+      path: "/api/scans/:id/overlay",
+      access: "session",
+      handler: async (c) => c.json(await getScanOverlay(db(c), ws(c), asScanId(param(c, "id")))),
     },
 
     // operations

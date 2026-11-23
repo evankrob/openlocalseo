@@ -51,6 +51,7 @@ export type ResultInsert = {
   ratingCount: number | null;
   category: string | null;
   address: string | null;
+  phone: string | null;
   isTarget: boolean;
 };
 
@@ -58,13 +59,14 @@ export async function insertResults(db: Db, scanId: string, rows: ResultInsert[]
   if (rows.length === 0) return;
   await execRaw(db, sql`
     INSERT INTO scan_results (id, scan_id, point_id, rank, business_key, name, place_id, cid, domain,
-                              rating, rating_count, category, address, is_target)
+                              rating, rating_count, category, address, phone, is_target)
     SELECT json_extract(j.value, '$.id'), ${scanId}, json_extract(j.value, '$.pointId'),
            json_extract(j.value, '$.rank'), json_extract(j.value, '$.businessKey'),
            json_extract(j.value, '$.name'), json_extract(j.value, '$.placeId'),
            json_extract(j.value, '$.cid'), json_extract(j.value, '$.domain'),
            json_extract(j.value, '$.rating'), json_extract(j.value, '$.ratingCount'),
            json_extract(j.value, '$.category'), json_extract(j.value, '$.address'),
+           json_extract(j.value, '$.phone'),
            json_extract(j.value, '$.isTarget')
     FROM json_each(${JSON.stringify(rows)}) AS j`);
 }

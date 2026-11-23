@@ -121,3 +121,12 @@ export const shareInputSchema = z.object({
   /** ISO date; omit for a link that never expires. */
   expiresAt: z.string().datetime().nullable().optional(),
 });
+
+/** Pin, hide or reset (back to the default list) one competitor of a tracker. */
+export const competitorChoiceSchema = z.object({
+  // `p:<place id>` or `c:<cid>`; results without an id cannot be chosen (see src/shared/overlay.ts)
+  identity: z.string().trim().min(3).max(200).regex(/^[pc]:/, "Only businesses with a place ID or CID can be pinned or hidden"),
+  name: z.string().trim().min(1).max(200),
+  status: z.enum(["pinned", "hidden", "default"]),
+});
+export type CompetitorChoice = z.infer<typeof competitorChoiceSchema>;
